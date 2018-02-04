@@ -30,9 +30,6 @@ main :: IO ()
 main = do
   putStrLn $ showMachine m
   let (_, m')= runMachine m $ do
-        stepMachine
-        stepMachine
-        stepMachine
-        stepMachine
+        stepMachineTillHalted 20
   putStrLn $ showMachine m'
   return ()

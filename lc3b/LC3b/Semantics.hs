@@ -13,7 +13,6 @@ import           Control.Monad.Trans.State.Lazy (StateT)
 import qualified Data.Array as A
 import           Data.Word (Word8, Word16)
 import qualified Data.Bits as B
-import Prelude hiding (not)
 
 import LC3b.Machine
 import LC3b.Utils
@@ -291,6 +290,14 @@ xor_imm dr sr1 imm = do
   writeReg dr res
   setNZP res
   incPC
+
+stepMachineTillHalted :: Monad m => Int -> MachineM m ()
+stepMachineTillHalted n | n <= 0 = return ()
+stepMachineTillHalted n = do
+  halted <- isHalted
+  when (not halted) $ do
+    stepMachine
+    stepMachineTillHalted (n-1)
 
 -- FIXME: Need to report error conditions on illegal opcodes, unimplemented
 -- instructions, etc.
