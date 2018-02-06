@@ -14,7 +14,7 @@ cabal-version:       >=1.10
 extra-source-files:  README.md
 
 executable lc3b
-  hs-source-dirs:      lc3b, sim
+  hs-source-dirs:      lib, sim
   main-is:             Main.hs
   other-modules:       LC3b.Machine,
                        LC3b.Semantics,
@@ -28,7 +28,7 @@ executable lc3b
                      , transformers >= 0.5 && < 0.6
 
 executable lc3b-asm
-  hs-source-dirs:      lc3b, asm
+  hs-source-dirs:      lib, asm
   main-is:             Main.hs
   other-modules:       LC3b.Assemble
   default-language:    Haskell2010

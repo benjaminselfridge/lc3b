@@ -2,13 +2,10 @@
 
 An instruction-level assembler/simulator for the LC-3b ISA.
 
+This project is incomplete
+
 ## Current plan
 
-First I want to get the simulator going; set up the various data structures, and
-get it to a point where I can manually code up a simple program and watch it
-go. I'll hand-code the program in a Haskell file and Main will just run that
-program against the initial LC-3b state. Once it terminates, we want to just
-print all the state changes that were made (maybe omit the memory... heh).
-
-After that, I'll worry about the assembler.
-# lc3b
+The simulator is finished; almost surely buggy. Working on the assembler right
+now so I can develop a test suite for the simulation. Need to develop a test
+suite for the assembler as well.
