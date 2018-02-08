@@ -3,10 +3,19 @@ module LC3b.Assemble
   ( -- * Types
     ProgramText
   , SymbolTable
+  , Line(..)
+  , LineData(..)
+  , Operand(..)
+  , RegId(..)
+  , Imm
+  , NZP
+  , Opcode(..)
+  , Program
   , ParseException(..)
     -- * Symbol table
   , buildSymbolTable
     -- * Assembly
+  , buildProgram
   ) where
 
 import           Control.Monad (when, void)
@@ -17,8 +26,6 @@ import           Control.Monad.Trans.Except (ExceptT)
 import qualified Control.Monad.Trans.Except as E
 import           Control.Monad.RWS (RWS)
 import qualified Control.Monad.RWS as RWS
-import           Data.ByteString (ByteString)
-import qualified Data.ByteString as B
 import           Data.Char (isSpace)
 import           Data.List (isPrefixOf)
 import           Data.Map (Map)
@@ -38,16 +45,23 @@ type SymbolTable = Map String Word16
 
 -- | Parsed line of assembly code.
 data Line = Line { lineData :: LineData
+                   -- ^ Parsed line data
                  , lineText :: String
+                   -- ^ Original text of the line
                  }
+  deriving (Show)
 
+-- | The parsed line data
 data LineData = LineDataInstr Opcode [Operand]
               | LineDataLiteral Word16
+  deriving (Show)
 
+-- | Operand type, either a register ID or an immediate value.
 data Operand = OperandRegId RegId
              | OperandImm Imm
+  deriving (Show)
 
-data RegId = RegId Word8
+type RegId = Word8
 type NZP = (Bool, Bool, Bool)
 type Imm = Word16
 
@@ -65,9 +79,9 @@ data Opcode = ADD
             | STW
             | TRAP
             | XOR
+  deriving (Show)
 
 type Program = [Line]
-
 
 data ParseException = BadEntryPoint Int String
                     | InvalidOpcode Int String
@@ -108,6 +122,7 @@ data SymbolTableBuilderState =
                             -- ^ The unparsed lines remaining in the program
                           , stbsSymbolTable :: SymbolTable
                             -- ^ The completed symbol table thus far
+                          , stbsEntryPoint :: Word16
                           }
 
 -- | Run a SymbolTableBuilderState computation with some initial state
@@ -121,7 +136,7 @@ runSTB st stb = S.runState (E.runExceptT stb) st
 -- program, which should contain a single literal indicating the address that the
 -- program should be placed at.
 stbsInit :: ProgramText -> SymbolTableBuilderState
-stbsInit lines = SymbolTableBuilderState 0 1 lines M.empty
+stbsInit progLines = SymbolTableBuilderState 0 1 progLines M.empty 0
 
 -- Basic functions on SymbolTableBuilder.
 
@@ -147,6 +162,14 @@ stbReadLineNum = lift S.get >>= return . stbsLineNum
 stbIncrLineNum :: SymbolTableBuilder ()
 stbIncrLineNum = lift $ S.modify $ \st -> st { stbsLineNum = 1 + stbsLineNum st }
 
+-- | Get the entry point
+stbReadEntryPoint :: SymbolTableBuilder Word16
+stbReadEntryPoint = lift S.get >>= return . stbsEntryPoint
+
+-- | Set entry point
+stbWriteEntryPoint :: Word16 -> SymbolTableBuilder ()
+stbWriteEntryPoint ep = lift $ S.modify $ \st -> st { stbsEntryPoint = ep }
+
 -- | Insert a symbol into the symbol table, using the current PC as the address for
 -- that symbol.
 stbAddSymbol :: String -> SymbolTableBuilder ()
@@ -159,10 +182,10 @@ stbAddSymbol label = do
 -- program text contains no more lines, throw an UnexpectedEOF exception.
 stbGetLine :: SymbolTableBuilder String
 stbGetLine = do
-  st <- lift S.get
+  stbSt <- lift S.get
   stbIncrLineNum
   lineNum <- stbReadLineNum
-  case stbsLines st of
+  case stbsLines stbSt of
     (line : rst) -> do
       S.modify $ \st -> st { stbsLines = rst }
       return line
@@ -171,6 +194,7 @@ stbGetLine = do
 -- Higher-level parsing functions for the symbol table.
 
 isLabel :: String -> Bool
+isLabel [] = False
 isLabel s = last s == ':'
 
 -- | Parse a single line of assembly code, looking for a symbol
@@ -186,7 +210,8 @@ stbParseLine = do
     [] -> return ()
 
 -- | Read the first line of the program to set the entry point. You must call this
--- function *before* calling stbBuildSymbolTable.
+-- function *before* calling stbBuildSymbolTable. We also return the entry point for
+-- the caller.
 stbParseEntryPoint :: SymbolTableBuilder ()
 stbParseEntryPoint = do
   lineNum <- stbReadLineNum
@@ -196,29 +221,32 @@ stbParseEntryPoint = do
       case readMaybe entrStr of
         Nothing -> do
           E.throwE (BadEntryPoint (lineNum) firstLine)
-        Just entryPoint -> stbWritePC entryPoint
+        Just entryPoint -> do
+          stbWritePC entryPoint
+          stbWriteEntryPoint entryPoint
     _ -> E.throwE (BadEntryPoint (lineNum) firstLine)
 
 -- | After parsing the entry point of the program with stbParseEntryPoint, call this
 -- function to process the rest of the program, building up the symbol table as we go.
 stbBuildSymbolTable :: SymbolTableBuilder ()
 stbBuildSymbolTable = do
-  st <- lift S.get
-  case stbsLines st of
+  stbSt <- lift S.get
+  case stbsLines stbSt of
     [] -> return ()
     _ -> do stbParseLine
             stbBuildSymbolTable
 
 -- | Build a symbol table from the complete text of the program (including the first
--- line containing the address of the first instruction).
-buildSymbolTable :: ProgramText -> (Maybe ParseException, SymbolTable)
-buildSymbolTable lines =
-  let (e, final_st) = runSTB (stbsInit lines) $ do
+-- line containing the address of the first instruction). Also return the entry point
+-- of the program.
+buildSymbolTable :: ProgramText -> (Maybe ParseException, SymbolTable, Word16)
+buildSymbolTable progLines =
+  let (e, final_st) = runSTB (stbsInit progLines) $ do
         stbParseEntryPoint
         stbBuildSymbolTable
   in case e of
-    Right _ -> (Nothing, stbsSymbolTable final_st)
-    Left e' -> (Just e', stbsSymbolTable final_st)
+    Right _  -> (Nothing, stbsSymbolTable final_st, stbsEntryPoint final_st)
+    Left  e' -> (Just e', stbsSymbolTable final_st, stbsEntryPoint final_st)
 
 ----------------------------------------
 -- Assembly
@@ -237,9 +265,6 @@ firstWord (c:cs) = if isSpace c
   else case firstWord cs of
          Nothing -> Nothing
          Just (w, cs') -> Just (c:w, cs')
-
-discardComment :: String -> String
-discardComment = takeWhile (/=';')
 
 -- | discard label, if there is one
 parseLabel :: Int -> LineBuilder ()
@@ -283,14 +308,14 @@ parseOpcode lineNum = do
         _       -> E.throwE (InvalidOpcode lineNum w)
 
 parseOperand :: Int -> SymbolTable -> String -> LineBuilder Operand
-parseOperand _ _ "R0" = return $ OperandRegId (RegId 0)
-parseOperand _ _ "R1" = return $ OperandRegId (RegId 1)
-parseOperand _ _ "R2" = return $ OperandRegId (RegId 2)
-parseOperand _ _ "R3" = return $ OperandRegId (RegId 3)
-parseOperand _ _ "R4" = return $ OperandRegId (RegId 4)
-parseOperand _ _ "R5" = return $ OperandRegId (RegId 5)
-parseOperand _ _ "R6" = return $ OperandRegId (RegId 6)
-parseOperand _ _ "R7" = return $ OperandRegId (RegId 7)
+parseOperand _ _ "R0" = return $ OperandRegId 0
+parseOperand _ _ "R1" = return $ OperandRegId 1
+parseOperand _ _ "R2" = return $ OperandRegId 2
+parseOperand _ _ "R3" = return $ OperandRegId 3
+parseOperand _ _ "R4" = return $ OperandRegId 4
+parseOperand _ _ "R5" = return $ OperandRegId 5
+parseOperand _ _ "R6" = return $ OperandRegId 6
+parseOperand _ _ "R7" = return $ OperandRegId 7
 parseOperand _ _ str | "0x" `isPrefixOf` str = return $ OperandImm (read str)
 parseOperand lineNum st str = case M.lookup str st of
   Nothing -> E.throwE $ UnknownSymbol lineNum str
@@ -311,8 +336,8 @@ parseInst lineNum st = do
                 , lineText = line
                 }
 
-parseLiteral :: Int -> SymbolTable -> LineBuilder (Maybe Line)
-parseLiteral lineNum st = do
+parseLiteral :: LineBuilder (Maybe Line)
+parseLiteral = do
   line <- lift S.get
   case words line of
     [w] -> case readMaybe w of
@@ -325,7 +350,7 @@ parseLiteral lineNum st = do
 -- | assemble a single line of assembly
 parseLine :: Int -> SymbolTable -> LineBuilder Line
 parseLine lineNum st = do
-  mLit <- parseLiteral lineNum st
+  mLit <- parseLiteral
   case mLit of
     Just lit -> return lit
     Nothing -> parseInst lineNum st
@@ -357,7 +382,7 @@ runPB pbSt st pb = RWS.evalRWS (E.runExceptT pb) st pbSt
 
 -- | Set up initial state for the ProgramBuilder.
 pbsInit :: ProgramText -> ProgramBuilderState
-pbsInit (_:lines) = ProgramBuilderState 0 1 lines
+pbsInit (_:progLines) = ProgramBuilderState 0 1 progLines
 pbsInit _ = ProgramBuilderState 0 1 []
 
 -- Basic functions on ProgramBuilder.
@@ -418,10 +443,13 @@ pbBuildProgram = do
 -- | Build a program from the complete program text (including first line containing
 -- the entry point)
 buildProgram :: SymbolTable -> ProgramText -> (Maybe ParseException, Program)
-buildProgram st lines =
-  let (e, final_st) = runPB (pbsInit lines) st $ do
+buildProgram st progLines =
+  let (e, prog) = runPB (pbsInit progLines) st $ do
         void pbGetLine -- skip first line containing entry point
-  in undefined
+        pbBuildProgram
+  in case e of
+    Right _ -> (Nothing, prog)
+    Left e' -> (Just e', prog)
 
 -- | Build a program from the complete program text
 -- buildSymbolTable :: ProgramText -> (Maybe ParseException, SymbolTable)
@@ -432,4 +460,4 @@ buildProgram st lines =
 --   in case e of
 --     Right _ -> (Nothing, stbsSymbolTable final_st)
 --     Left e' -> (Just e', stbsSymbolTable final_st)
-    
+

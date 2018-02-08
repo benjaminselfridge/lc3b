@@ -22,8 +22,11 @@ main = do
   forM args $ \fileName -> do
     putStrLn ("Assembling " ++ fileName ++ "...")
     progStr <- readFile fileName
-    let program = lines progStr
-    let (err, symTable) = buildSymbolTable program
+    let progTxt = lines progStr
+    let (err, symTable, ep) = buildSymbolTable progTxt
+    let (err', prog) = buildProgram symTable progTxt
     case err of
-      Nothing -> putStrLn (show symTable)
+      Nothing -> do putStrLn $ "Program entry point: " ++ show ep
+                    putStrLn $ show symTable
+                    putStrLn $ show prog
       Just e  -> putStrLn ("Error building symbol table:\n" ++ show e)
