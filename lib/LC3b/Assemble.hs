@@ -1,4 +1,5 @@
 -- | Assembler for LC-3b programs
+-- We export three functions: buildSymbolTable, buildProgram, and assembleProgram.
 module LC3b.Assemble
   ( -- * Types
     ProgramText
@@ -8,13 +9,11 @@ module LC3b.Assemble
   , Operand(..)
   , RegId
   , Imm
-  , NZP
   , Opcode(..)
   , Program
   , ParseException(..)
-    -- * Symbol table
+    -- * Functions
   , buildSymbolTable
-    -- * Assembly
   , buildProgram
   ) where
 
@@ -55,7 +54,10 @@ data Line = Line { lineData :: LineData
                  }
   deriving (Show)
 
--- | The parsed line data
+-- | The parsed line data.
+-- Each instruction is just an opcode with a list of operands. The operand list is
+-- allowed to be ill-formed; in that case, we will catch the bug while we are
+-- outputting to bytes.
 data LineData = LineDataInstr Opcode [Operand]
               | LineDataLiteral Word16
   deriving (Show)
@@ -66,19 +68,31 @@ data Operand = OperandRegId RegId
   deriving (Show)
 
 type RegId = Word8
-type NZP = (Bool, Bool, Bool)
 type Imm = Word16
 
+-- | We create one constructor for each assembly language opcode. Some of these are
+-- synonyms.
 data Opcode = ADD
             | AND
-            | BR NZP
+            | BR
+            | BRn
+            | BRz
+            | BRp
+            | BRnz
+            | BRnp
+            | BRnzp
             | JMP
             | JSR
+            | JSRR
             | LDB
             | LDW
             | LEA
+            | NOT
+            | RET
             | RTI
-            | SHF
+            | LSHF
+            | RSHFL
+            | RSHFA
             | STB
             | STW
             | TRAP
@@ -257,7 +271,7 @@ buildSymbolTable progLines =
     Left  e' -> (Just e', stbsSymbolTable final_st, stbsEntryPoint final_st)
 
 ----------------------------------------
--- Assembly
+-- Parsing
 
 -- | Simple parser monad for a line of assembly code. Needs an environment including
 -- the current line number and the entire original string (for error messages) as
@@ -279,8 +293,8 @@ lpDiscardLabel = do
     Nothing -> return ()
     Just (w, str') -> do
       -- we know w is nonempty, so it should be safe to call last.
-      case last w of
-        ':' -> do
+      case isLabel w of
+        True -> do
           lift $ RWS.put (dropWhile isSpace str')
         _ -> return ()
   return ()
@@ -303,22 +317,9 @@ lpParseOpcode = do
     Just (w, str') -> do
       -- throw away the first word
       lift $ RWS.put (dropWhile isSpace str')
-      -- special case for the BR opcode
-      case stripPrefix "BR" w of
-        Just cc -> case cc of
-          ""    -> return $ BR ( True, True, True)
-          "n"   -> return $ BR ( True,False,False)
-          "z"   -> return $ BR (False, True, True)
-          "p"   -> return $ BR (False,False, True)
-          "nz"  -> return $ BR ( True, True,False)
-          "np"  -> return $ BR ( True,False, True)
-          "zp"  -> return $ BR (False, True, True)
-          "nzp" -> return $ BR ( True, True, True)
-          _     -> E.throwE (InvalidOpcode lineNum w line)
-        Nothing -> do
-          case (readMaybe w) of
-            Nothing -> E.throwE (InvalidOpcode lineNum w line)
-            Just opcode -> return opcode
+      case (readMaybe w) of
+        Nothing -> E.throwE (InvalidOpcode lineNum w line)
+        Just opcode -> return opcode
 
 -- | Parse a single operand (doesn't change the state)
 readOperand :: String -> LineParser Operand
@@ -346,8 +347,8 @@ lpParseOperands = do
   str <- RWS.get
   sequence $ readOperand <$> words str
 
-assembleLine :: Int -> SymbolTable -> String -> Either ParseException Line
-assembleLine lineNum st lineStr = runLP lineNum st lineStr $ do
+parseLine :: Int -> SymbolTable -> String -> Either ParseException Line
+parseLine lineNum st lineStr = runLP lineNum st lineStr $ do
   lpDiscardLabel
   lpDiscardComment
   opcode <- lpParseOpcode
@@ -407,7 +408,7 @@ pbParseLine = do
   lineStr <- pbGetLine
   lineNum <- pbReadLineNum
   st <- lift RWS.ask
-  let eline = assembleLine lineNum st lineStr
+  let eline = parseLine lineNum st lineStr
   case eline of
     Left  e    -> E.throwE e
     Right line -> lift $ RWS.tell [line]
@@ -431,3 +432,11 @@ buildProgram st progLines =
   in case e of
     Right _ -> (Nothing, prog)
     Left e' -> (Just e', prog)
+
+----------------------------------------
+-- Assembly
+
+assembleLine :: Line -> Word16
+assembleLine (Line (LineDataInstr opcode operands) _) =
+  undefined
+
