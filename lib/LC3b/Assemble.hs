@@ -97,19 +97,17 @@ data ParseException = BadEntryPoint Int String
 
 instance Show ParseException where
   show (BadEntryPoint lineNum line) =
-    "  Bad entry point at line " ++ show lineNum ++ ":\n  " ++ line
+    "  Bad entry point at line " ++ show lineNum ++ ":\n" ++ line
   show (InvalidOpcode lineNum opcode line) =
     "  Invalid opcode \"" ++ opcode ++ "\" at line " ++ show lineNum ++ ":\n" ++
-    "  " ++ opcode ++ "\n" ++
-    "  In line: " ++ line ++ "\n"
+    line ++ "\n"
   show (InvalidOperand lineNum operand line) =
     "  Invalid operand \"" ++ operand ++ "\" at line " ++ show lineNum ++ ":\n" ++
-    "  " ++ operand ++ "\n" ++
-    "  In line: " ++ line ++ "\n"
+    line ++ "\n"
   show (EmptyLine lineNum) =
     "  Empty line at line " ++ show lineNum ++ "\n"
   show (IllFormedLine lineNum line) =
-    "  Ill-formed line at line " ++ show lineNum ++ ":\n  " ++ line
+    "  Ill-formed line at line " ++ show lineNum ++ ":\n" ++ line ++ "\n"
   show (UnknownSymbol lineNum label) =
     "  Unknown symbol at line " ++ show lineNum ++ ":\n  " ++ label
   show (UnexpectedEOF lineNum) =
@@ -301,7 +299,7 @@ lpParseOpcode = do
   let mFirstWord = firstWord str
   case mFirstWord of
     Nothing -> do
-      E.throwE (IllFormedLine lineNum str)
+      E.throwE (IllFormedLine lineNum line)
     Just (w, str') -> do
       -- throw away the first word
       lift $ RWS.put (dropWhile isSpace str')
@@ -449,14 +447,3 @@ buildProgram st progLines =
   in case e of
     Right _ -> (Nothing, prog)
     Left e' -> (Just e', prog)
-
--- | Build a program from the complete program text
--- buildSymbolTable :: ProgramText -> (Maybe ParseException, SymbolTable)
--- buildSymbolTable lines =
---   let (e, final_st) = runSTB (stbsInit lines) $ do
---         stbParseEntryPoint
---         stbBuildSymbolTable
---   in case e of
---     Right _ -> (Nothing, stbsSymbolTable final_st)
---     Left e' -> (Just e', stbsSymbolTable final_st)
-
