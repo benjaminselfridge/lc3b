@@ -362,8 +362,7 @@ type ProgramBuilder = ExceptT ParseException (RWS SymbolTable Program ProgramBui
 
 -- | State for the program builder monad
 data ProgramBuilderState =
-  ProgramBuilderState { pbsPC :: Word16
-                      , pbsLineNum :: Int
+  ProgramBuilderState { pbsLineNum :: Int
                       , pbsLines :: ProgramText
                       }
 
@@ -377,24 +376,9 @@ runPB pbSt st pb = RWS.evalRWS (E.runExceptT pb) st pbSt
 
 -- | Set up initial state for the ProgramBuilder.
 pbsInit :: ProgramText -> ProgramBuilderState
-pbsInit progLines = ProgramBuilderState 0 1 progLines
-
+pbsInit progLines = ProgramBuilderState 1 progLines
 
 -- Basic functions on ProgramBuilder.
-
--- | Get the current PC
-pbReadPC :: ProgramBuilder Word16
-pbReadPC = lift S.get >>= return . pbsPC
-
--- | Set the current PC
-pbWritePC :: Word16 -> ProgramBuilder ()
-pbWritePC newPC = lift $ S.modify $ \st -> st { pbsPC = newPC }
-
--- | Increment the current PC (by 2)
-pbIncrPC :: ProgramBuilder ()
-pbIncrPC = do
-  pc <- pbReadPC
-  pbWritePC (pc+2)
 
 -- | Get the current program line number
 pbReadLineNum :: ProgramBuilder Int
@@ -413,7 +397,7 @@ pbGetLine = do
   lineNum <- pbReadLineNum
   case pbsLines st of
     (line : rst) -> do
-      S.modify $ \st -> st { pbsLines = rst }
+      S.modify $ \pbsSt -> pbsSt { pbsLines = rst }
       return line
     [] -> E.throwE (UnexpectedEOF lineNum)
 

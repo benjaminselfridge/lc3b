@@ -294,8 +294,8 @@ xor_imm dr sr1 imm = do
 stepMachineTillHalted :: Monad m => Int -> MachineM m ()
 stepMachineTillHalted n | n <= 0 = return ()
 stepMachineTillHalted n = do
-  halted <- isHalted
-  when (not halted) $ do
+  h <- isHalted
+  when (not h) $ do
     stepMachine
     stepMachineTillHalted (n-1)
 
@@ -305,8 +305,8 @@ stepMachineTillHalted n = do
 stepMachine :: Monad m => MachineM m ()
 stepMachine = do
   -- If the machine has halted, do nothing
-  halted <- isHalted
-  when halted $ do
+  h <- isHalted
+  when h $ do
     return ()
 
   -- Fetch the current instruction
@@ -432,4 +432,5 @@ stepMachine = do
       -- TRAP
       let trapvect8 = extract 0 7 instr
       trap trapvect8
+    _ -> return ()
   return ()

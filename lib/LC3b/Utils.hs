@@ -2,20 +2,16 @@ module LC3b.Utils where
 
 import qualified Data.Array as A
 import           Data.Array (Array, Ix)
-import           Data.Bits ( Bits
-                           , (.&.)
+import           Data.Bits ( (.&.)
                            , (.|.)
                            , shiftL
                            , shiftR
-                           , bitSizeMaybe
-                           , bit
                            , complement
                            , setBit
                            , testBit)
 import qualified Data.ByteString as B
 import           Data.ByteString (ByteString)
 import           Data.Char (isSpace)
-import qualified Data.Word as W
 import           Data.Word (Word8, Word16)
 import           Numeric (showHex)
 

@@ -4,10 +4,8 @@ module LC3b.Machine where
 
 import qualified Data.Array as A
 import           Data.Array (Array)
-import qualified Data.ByteString as B
 import           Data.ByteString (ByteString)
 import           Data.List (intercalate)
-import qualified Data.Word as W
 import           Data.Word (Word8, Word16)
 
 import LC3b.Utils
@@ -56,5 +54,5 @@ showMemory :: Machine -> Word16 -> Word16 -> String
 showMemory m addr bytes =
   intercalate "\n" addrStrs
   where addrStrs = map addrStr [addr..addr+bytes-1]
-        addrStr addr = let val = (memory m) A.! addr
-          in showHex16 addr ++ ": " ++ showHex8 val
+        addrStr addr' = let val = (memory m) A.! addr'
+          in showHex16 addr' ++ ": " ++ showHex8 val
