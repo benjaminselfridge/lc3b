@@ -24,9 +24,13 @@ main = do
     progStr <- readFile fileName
     let progTxt = lines progStr
     let (err, symTable, ep) = buildSymbolTable progTxt
+    print symTable
     let (err', prog) = buildProgram symTable progTxt
-    case err of
-      Nothing -> do putStrLn $ "Program entry point: " ++ show ep
-                    putStrLn $ show symTable
-                    putStrLn $ show prog
-      Just e  -> putStrLn ("Error building symbol table:\n" ++ show e)
+    case (err, err') of
+      (Nothing, Nothing) -> do
+        putStrLn $ "Program entry point: " ++ show ep
+        mapM_ print prog
+      (Just e,_) ->
+        putStrLn ("Error building symbol table:\n" ++ show e)
+      (_, Just e') ->
+        putStrLn ("Error parsing program:\n" ++ show e')

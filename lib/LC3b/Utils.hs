@@ -14,6 +14,7 @@ import           Data.Bits ( Bits
                            , testBit)
 import qualified Data.ByteString as B
 import           Data.ByteString (ByteString)
+import           Data.Char (isSpace)
 import qualified Data.Word as W
 import           Data.Word (Word8, Word16)
 import           Numeric (showHex)
@@ -53,3 +54,10 @@ showHex8 x = "0x" ++ showHex x ""
 
 showHex16 :: Word16 -> String
 showHex16 x = "0x" ++ showHex x ""
+
+firstWord :: String -> Maybe (String, String)
+firstWord str = do
+  let (w, str') = span (not . isSpace) $ dropWhile isSpace str
+  case w of
+    "" -> Nothing
+    _  -> Just (w, str')

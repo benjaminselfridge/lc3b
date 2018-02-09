@@ -6,7 +6,7 @@ module LC3b.Assemble
   , Line(..)
   , LineData(..)
   , Operand(..)
-  , RegId(..)
+  , RegId
   , Imm
   , NZP
   , Opcode(..)
@@ -27,12 +27,16 @@ import qualified Control.Monad.Trans.Except as E
 import           Control.Monad.RWS (RWS)
 import qualified Control.Monad.RWS as RWS
 import           Data.Char (isSpace)
-import           Data.List (isPrefixOf)
+import           Data.List ( isPrefixOf
+                           , stripPrefix)
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Word (Word8, Word16)
 import           Text.Read (readMaybe)
 
+import LC3b.Utils
+
+import Debug.Trace (trace)
 
 ----------------------------------------
 -- Types
@@ -79,23 +83,33 @@ data Opcode = ADD
             | STW
             | TRAP
             | XOR
-  deriving (Show)
+  deriving (Show, Read)
 
 type Program = [Line]
 
 data ParseException = BadEntryPoint Int String
-                    | InvalidOpcode Int String
+                    | InvalidOpcode Int String String
+                    | InvalidOperand Int String String
                     | EmptyLine Int
                     | UnknownSymbol Int String
+                    | IllFormedLine Int String
                     | UnexpectedEOF Int
 
 instance Show ParseException where
   show (BadEntryPoint lineNum line) =
     "  Bad entry point at line " ++ show lineNum ++ ":\n  " ++ line
-  show (InvalidOpcode lineNum opcode) =
-    "  Invalid opcode at line " ++ show lineNum ++ ":\n  " ++ opcode
+  show (InvalidOpcode lineNum opcode line) =
+    "  Invalid opcode \"" ++ opcode ++ "\" at line " ++ show lineNum ++ ":\n" ++
+    "  " ++ opcode ++ "\n" ++
+    "  In line: " ++ line ++ "\n"
+  show (InvalidOperand lineNum operand line) =
+    "  Invalid operand \"" ++ operand ++ "\" at line " ++ show lineNum ++ ":\n" ++
+    "  " ++ operand ++ "\n" ++
+    "  In line: " ++ line ++ "\n"
   show (EmptyLine lineNum) =
     "  Empty line at line " ++ show lineNum ++ "\n"
+  show (IllFormedLine lineNum line) =
+    "  Ill-formed line at line " ++ show lineNum ++ ":\n  " ++ line
   show (UnknownSymbol lineNum label) =
     "  Unknown symbol at line " ++ show lineNum ++ ":\n  " ++ label
   show (UnexpectedEOF lineNum) =
@@ -162,10 +176,6 @@ stbReadLineNum = lift S.get >>= return . stbsLineNum
 stbIncrLineNum :: SymbolTableBuilder ()
 stbIncrLineNum = lift $ S.modify $ \st -> st { stbsLineNum = 1 + stbsLineNum st }
 
--- | Get the entry point
-stbReadEntryPoint :: SymbolTableBuilder Word16
-stbReadEntryPoint = lift S.get >>= return . stbsEntryPoint
-
 -- | Set entry point
 stbWriteEntryPoint :: Word16 -> SymbolTableBuilder ()
 stbWriteEntryPoint ep = lift $ S.modify $ \st -> st { stbsEntryPoint = ep }
@@ -203,7 +213,7 @@ stbParseLine = do
   lineStr <- stbGetLine
   case words lineStr of
     (label : _) -> do
-      when (isLabel label) $ stbAddSymbol label
+      when (isLabel label) $ stbAddSymbol (init label)
       -- FIXME: don't increment the PC on a pure comment line
       -- When we get the line parser working we can come back and fix this piece
       stbIncrPC -- since we found a nonempty line, increment the PC
@@ -251,116 +261,103 @@ buildSymbolTable progLines =
 ----------------------------------------
 -- Assembly
 
--- | Parsing monad for a single line of assembly
--- FIXME: ReaderT with the symbol table and line number?
-type LineBuilder = ExceptT ParseException (State String)
+-- | Simple parser monad for a line of assembly code. Needs an environment including
+-- the current line number and the entire original string (for error messages) as
+-- well as the symbol table for name resolution. State consists of the suffix of the
+-- original string that still has not been parsed.
+type LineParser = ExceptT ParseException (RWS (Int, String, SymbolTable) () String)
 
-runLineBuilder :: String -> LineBuilder a -> (Either ParseException a, String)
-runLineBuilder str action = S.runState (E.runExceptT action) str
+runLP :: Int -> SymbolTable -> String -> LineParser a -> Either ParseException a
+runLP lineNum st line action =
+  let (ea, _) = RWS.evalRWS (E.runExceptT action) (lineNum, line, st) line
+  in  ea
 
-firstWord :: String -> Maybe (String, String)
-firstWord [] = Nothing
-firstWord (c:cs) = if isSpace c
-  then Just ("", cs)
-  else case firstWord cs of
-         Nothing -> Nothing
-         Just (w, cs') -> Just (c:w, cs')
+-- | Discard the label if there is one.
+lpDiscardLabel :: LineParser ()
+lpDiscardLabel = do
+  str <- RWS.get
+  let mFirstWord = firstWord str
+  case mFirstWord of
+    Nothing -> return ()
+    Just (w, str') -> do
+      -- we know w is nonempty, so it should be safe to call last.
+      case last w of
+        ':' -> do
+          lift $ RWS.put (dropWhile isSpace str')
+        _ -> return ()
+  return ()
 
--- | discard label, if there is one
-parseLabel :: Int -> LineBuilder ()
-parseLabel lineNum = do
-  str <- lift S.get
-  case firstWord str of
-    Nothing -> E.throwE (EmptyLine lineNum)
-    Just (w, ws) -> do
-      when (isLabel w) $ lift $ S.put ws
+-- | Discard the comment if there is one.
+lpDiscardComment :: LineParser ()
+lpDiscardComment = do
+  str <- RWS.get
+  lift $ RWS.put (takeWhile (/= ';') str)
 
--- | parse opcode
-parseOpcode :: Int -> LineBuilder Opcode
-parseOpcode lineNum = do
-  str <- lift S.get
-  case firstWord str of
-    Nothing -> E.throwE (EmptyLine lineNum)
-    Just (w, ws) -> do
-      lift $ S.put ws
-      case w of
-        "ADD"   -> return ADD
-        "AND"   -> return AND
-        "BR"    -> return $ BR (True, True, True)
-        "BRn"   -> return $ BR (True, False, False)
-        "BRz"   -> return $ BR (False, True, False)
-        "BRp"   -> return $ BR (False, False, True)
-        "BRnz"  -> return $ BR (True, True, False)
-        "BRnp"  -> return $ BR (True, False, True)
-        "BRzp"  -> return $ BR (False, True, True)
-        "BRnzp" -> return $ BR (True, True, True)
-        "JMP"   -> return JMP
-        "JSR"   -> return JSR
-        "LDB"   -> return LDB
-        "LDW"   -> return LDW
-        "LEA"   -> return LEA
-        "RTI"   -> return RTI
-        "SHF"   -> return SHF
-        "STB"   -> return STB
-        "STW"   -> return STW
-        "TRAP"  -> return TRAP
-        "XOR"   -> return XOR
-        _       -> E.throwE (InvalidOpcode lineNum w)
+-- | Parse the opcode.
+lpParseOpcode :: LineParser Opcode
+lpParseOpcode = do
+  str <- RWS.get
+  (lineNum,line,_) <- RWS.ask
+  let mFirstWord = firstWord str
+  case mFirstWord of
+    Nothing -> do
+      E.throwE (IllFormedLine lineNum str)
+    Just (w, str') -> do
+      -- throw away the first word
+      lift $ RWS.put (dropWhile isSpace str')
+      -- special case for the BR opcode
+      case stripPrefix "BR" w of
+        Just cc -> case cc of
+          ""    -> return $ BR ( True, True, True)
+          "n"   -> return $ BR ( True,False,False)
+          "z"   -> return $ BR (False, True, True)
+          "p"   -> return $ BR (False,False, True)
+          "nz"  -> return $ BR ( True, True,False)
+          "np"  -> return $ BR ( True,False, True)
+          "zp"  -> return $ BR (False, True, True)
+          "nzp" -> return $ BR ( True, True, True)
+          _     -> E.throwE (InvalidOpcode lineNum w line)
+        Nothing -> do
+          case (readMaybe w) of
+            Nothing -> E.throwE (InvalidOpcode lineNum w line)
+            Just opcode -> return opcode
 
-parseOperand :: Int -> SymbolTable -> String -> LineBuilder Operand
-parseOperand _ _ "R0" = return $ OperandRegId 0
-parseOperand _ _ "R1" = return $ OperandRegId 1
-parseOperand _ _ "R2" = return $ OperandRegId 2
-parseOperand _ _ "R3" = return $ OperandRegId 3
-parseOperand _ _ "R4" = return $ OperandRegId 4
-parseOperand _ _ "R5" = return $ OperandRegId 5
-parseOperand _ _ "R6" = return $ OperandRegId 6
-parseOperand _ _ "R7" = return $ OperandRegId 7
-parseOperand _ _ str | "0x" `isPrefixOf` str = return $ OperandImm (read str)
-parseOperand lineNum st str = case M.lookup str st of
-  Nothing -> E.throwE $ UnknownSymbol lineNum str
-  Just imm -> return $ OperandImm imm
+-- | Parse a single operand (doesn't change the state)
+readOperand :: String -> LineParser Operand
+readOperand str = do
+  (lineNum,line,st) <- RWS.ask
+  case str of
+    "R0" -> return $ OperandRegId 0
+    "R1" -> return $ OperandRegId 1
+    "R2" -> return $ OperandRegId 2
+    "R3" -> return $ OperandRegId 3
+    "R4" -> return $ OperandRegId 4
+    "R5" -> return $ OperandRegId 5
+    "R6" -> return $ OperandRegId 6
+    "R7" -> return $ OperandRegId 7
+    _ -> do
+      case ("0x" `isPrefixOf` str, M.lookup str st) of
+        (True,     _) -> return $ OperandImm (read str)
+        (_, Just imm) -> return $ OperandImm imm
+        _ -> trace ("<" ++ str ++ ">") $
+             E.throwE (InvalidOperand lineNum str line)
 
-parseOperands :: Int -> SymbolTable -> LineBuilder [Operand]
-parseOperands lineNum st = do
-  operands <- words <$> lift S.get
-  mapM (parseOperand lineNum st) operands
+-- | Parse the operand list.
+lpParseOperands :: LineParser [Operand]
+lpParseOperands = do
+  str <- RWS.get
+  sequence $ readOperand <$> words str
 
-parseInst :: Int -> SymbolTable -> LineBuilder Line
-parseInst lineNum st = do
-  line <- lift S.get
-  parseLabel lineNum
-  opcode <- parseOpcode lineNum
-  operands <- parseOperands lineNum st
-  return $ Line { lineData = LineDataInstr opcode operands
-                , lineText = line
-                }
-
-parseLiteral :: LineBuilder (Maybe Line)
-parseLiteral = do
-  line <- lift S.get
-  case words line of
-    [w] -> case readMaybe w of
-      Nothing -> return Nothing
-      Just lit -> return $ Just $ Line { lineData = LineDataLiteral lit
-                                       , lineText = line
-                                       }
-    _ -> return Nothing
-
--- | assemble a single line of assembly
-parseLine :: Int -> SymbolTable -> LineBuilder Line
-parseLine lineNum st = do
-  mLit <- parseLiteral
-  case mLit of
-    Just lit -> return lit
-    Nothing -> parseInst lineNum st
-
-assembleLine :: Monad m => String -> Int -> SymbolTable -> ExceptT ParseException m Line
-assembleLine lineStr lineNum st =
-  let (eLine, _) = runLineBuilder lineStr (parseLine lineNum st)
-  in case eLine of
-       Left e -> E.throwE e
-       Right l -> return l
+assembleLine :: Int -> SymbolTable -> String -> Either ParseException Line
+assembleLine lineNum st lineStr = runLP lineNum st lineStr $ do
+  lpDiscardLabel
+  lpDiscardComment
+  opcode <- lpParseOpcode
+  operands <- lpParseOperands
+  return $ Line {
+    lineData = LineDataInstr opcode operands,
+    lineText = lineStr
+    }
 
 -- | State monad for assembling the program
 type ProgramBuilder = ExceptT ParseException (RWS SymbolTable Program ProgramBuilderState)
@@ -382,8 +379,8 @@ runPB pbSt st pb = RWS.evalRWS (E.runExceptT pb) st pbSt
 
 -- | Set up initial state for the ProgramBuilder.
 pbsInit :: ProgramText -> ProgramBuilderState
-pbsInit (_:progLines) = ProgramBuilderState 0 1 progLines
-pbsInit _ = ProgramBuilderState 0 1 []
+pbsInit progLines = ProgramBuilderState 0 1 progLines
+
 
 -- Basic functions on ProgramBuilder.
 
@@ -428,8 +425,10 @@ pbParseLine = do
   lineStr <- pbGetLine
   lineNum <- pbReadLineNum
   st <- lift RWS.ask
-  line <- assembleLine lineStr lineNum st
-  lift $ RWS.tell [line]
+  let eline = assembleLine lineNum st lineStr
+  case eline of
+    Left  e    -> E.throwE e
+    Right line -> lift $ RWS.tell [line]
 
 -- | Parse the entire program
 pbBuildProgram :: ProgramBuilder ()
