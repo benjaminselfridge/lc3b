@@ -12,12 +12,14 @@ module LC3b.Assemble
   , Opcode(..)
   , Program
   , ParseException(..)
-    -- * Functions
+    -- *n Functions
   , buildSymbolTable
   , buildProgram
+  , placeBits
+  , assembleLine
   ) where
 
-import           Control.Monad (when, void)
+import           Control.Monad (when)
 import           Control.Monad.State (State)
 import qualified Control.Monad.State as S
 import           Control.Monad.Trans.Class (lift)
@@ -25,9 +27,14 @@ import           Control.Monad.Trans.Except (ExceptT)
 import qualified Control.Monad.Trans.Except as E
 import           Control.Monad.RWS (RWS)
 import qualified Control.Monad.RWS as RWS
+import           Data.Bits ( (.&.)
+                           , (.|.)
+                           , shiftR
+                           , shiftL
+                           , bit
+                           )
 import           Data.Char (isSpace)
-import           Data.List ( isPrefixOf
-                           , stripPrefix)
+import           Data.List ( isPrefixOf )
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Word (Word8, Word16)
@@ -49,8 +56,12 @@ type SymbolTable = Map String Word16
 -- | Parsed line of assembly code.
 data Line = Line { lineData :: LineData
                    -- ^ Parsed line data
+                 , lineNum  :: Int
+                   -- ^ line number for error reporting
                  , lineText :: String
                    -- ^ Original text of the line
+                 , lineAddr :: Word16
+                   -- ^ address of line in memory
                  }
   deriving (Show)
 
@@ -80,6 +91,7 @@ data Opcode = ADD
             | BRp
             | BRnz
             | BRnp
+            | BRzp
             | BRnzp
             | JMP
             | JSR
@@ -104,28 +116,29 @@ type Program = [Line]
 data ParseException = BadEntryPoint Int String
                     | InvalidOpcode Int String String
                     | InvalidOperand Int String String
-                    | EmptyLine Int
+                    | OperandTypeError Int String
                     | UnknownSymbol Int String
                     | IllFormedLine Int String
                     | UnexpectedEOF Int
 
 instance Show ParseException where
-  show (BadEntryPoint lineNum line) =
-    "  Bad entry point at line " ++ show lineNum ++ ":\n" ++ line
-  show (InvalidOpcode lineNum opcode line) =
-    "  Invalid opcode \"" ++ opcode ++ "\" at line " ++ show lineNum ++ ":\n" ++
+  show (BadEntryPoint ln line) =
+    "  Bad entry point at line " ++ show ln ++ ":\n" ++ line
+  show (InvalidOpcode ln opcode line) =
+    "  Invalid opcode \"" ++ opcode ++ "\" at line " ++ show ln ++ ":\n" ++
     line ++ "\n"
-  show (InvalidOperand lineNum operand line) =
-    "  Invalid operand \"" ++ operand ++ "\" at line " ++ show lineNum ++ ":\n" ++
+  show (InvalidOperand ln operand line) =
+    "  Invalid operand \"" ++ operand ++ "\" at line " ++ show ln ++ ":\n" ++
     line ++ "\n"
-  show (EmptyLine lineNum) =
-    "  Empty line at line " ++ show lineNum ++ "\n"
-  show (IllFormedLine lineNum line) =
-    "  Ill-formed line at line " ++ show lineNum ++ ":\n" ++ line ++ "\n"
-  show (UnknownSymbol lineNum label) =
-    "  Unknown symbol at line " ++ show lineNum ++ ":\n  " ++ label
-  show (UnexpectedEOF lineNum) =
-    "  Unexpected EOF at line " ++ show lineNum ++ "\n"
+  show (OperandTypeError ln line) =
+    "  Opcode/operand type mismatch at line " ++ show ln ++ ":\n" ++
+    line ++ "\n"
+  show (IllFormedLine ln line) =
+    "  Ill-formed line at line " ++ show ln ++ ":\n" ++ line ++ "\n"
+  show (UnknownSymbol ln label) =
+    "  Unknown symbol at line " ++ show ln ++ ":\n  " ++ label
+  show (UnexpectedEOF ln) =
+    "  Unexpected EOF at line " ++ show ln ++ "\n"
 
 
 ----------------------------------------
@@ -206,12 +219,12 @@ stbGetLine :: SymbolTableBuilder String
 stbGetLine = do
   stbSt <- lift S.get
   stbIncrLineNum
-  lineNum <- stbReadLineNum
+  ln <- stbReadLineNum
   case stbsLines stbSt of
     (line : rst) -> do
       S.modify $ \st -> st { stbsLines = rst }
       return line
-    [] -> E.throwE (UnexpectedEOF lineNum)
+    [] -> E.throwE (UnexpectedEOF ln)
 
 -- Higher-level parsing functions for the symbol table.
 
@@ -236,17 +249,17 @@ stbParseLine = do
 -- the caller.
 stbParseEntryPoint :: SymbolTableBuilder ()
 stbParseEntryPoint = do
-  lineNum <- stbReadLineNum
+  ln <- stbReadLineNum
   firstLine <- stbGetLine
   case words firstLine of
     [entrStr] -> do
       case readMaybe entrStr of
         Nothing -> do
-          E.throwE (BadEntryPoint (lineNum) firstLine)
+          E.throwE (BadEntryPoint ln firstLine)
         Just entryPoint -> do
           stbWritePC entryPoint
           stbWriteEntryPoint entryPoint
-    _ -> E.throwE (BadEntryPoint (lineNum) firstLine)
+    _ -> E.throwE (BadEntryPoint ln firstLine)
 
 -- | After parsing the entry point of the program with stbParseEntryPoint, call this
 -- function to process the rest of the program, building up the symbol table as we go.
@@ -280,8 +293,8 @@ buildSymbolTable progLines =
 type LineParser = ExceptT ParseException (RWS (Int, String, SymbolTable) () String)
 
 runLP :: Int -> SymbolTable -> String -> LineParser a -> Either ParseException a
-runLP lineNum st line action =
-  let (ea, _) = RWS.evalRWS (E.runExceptT action) (lineNum, line, st) line
+runLP ln st line action =
+  let (ea, _) = RWS.evalRWS (E.runExceptT action) (ln, line, st) line
   in  ea
 
 -- | Discard the label if there is one.
@@ -309,22 +322,24 @@ lpDiscardComment = do
 lpParseOpcode :: LineParser Opcode
 lpParseOpcode = do
   str <- RWS.get
-  (lineNum,line,_) <- RWS.ask
+  (ln,line,_) <- RWS.ask
   let mFirstWord = firstWord str
   case mFirstWord of
     Nothing -> do
-      E.throwE (IllFormedLine lineNum line)
+      E.throwE (IllFormedLine ln line)
     Just (w, str') -> do
       -- throw away the first word
       lift $ RWS.put (dropWhile isSpace str')
       case (readMaybe w) of
-        Nothing -> E.throwE (InvalidOpcode lineNum w line)
+        Nothing -> E.throwE (InvalidOpcode ln w line)
         Just opcode -> return opcode
 
 -- | Parse a single operand (doesn't change the state)
+-- FIXME: When reading labels, we need to sometimes store the offset and sometimes
+-- store the immediate. 
 readOperand :: String -> LineParser Operand
 readOperand str = do
-  (lineNum,line,st) <- RWS.ask
+  (ln,line,st) <- RWS.ask
   case str of
     "R0" -> return $ OperandRegId 0
     "R1" -> return $ OperandRegId 1
@@ -339,7 +354,7 @@ readOperand str = do
         (True,     _) -> return $ OperandImm (read str)
         (_, Just imm) -> return $ OperandImm imm
         _ -> trace ("<" ++ str ++ ">") $
-             E.throwE (InvalidOperand lineNum str line)
+             E.throwE (InvalidOperand ln str line)
 
 -- | Parse the operand list.
 lpParseOperands :: LineParser [Operand]
@@ -347,15 +362,17 @@ lpParseOperands = do
   str <- RWS.get
   sequence $ readOperand <$> words str
 
-parseLine :: Int -> SymbolTable -> String -> Either ParseException Line
-parseLine lineNum st lineStr = runLP lineNum st lineStr $ do
+parseLine :: Int -> Word16 -> SymbolTable -> String -> Either ParseException Line
+parseLine ln la st lineStr = runLP ln st lineStr $ do
   lpDiscardLabel
   lpDiscardComment
   opcode <- lpParseOpcode
   operands <- lpParseOperands
   return $ Line {
     lineData = LineDataInstr opcode operands,
-    lineText = lineStr
+    lineNum  = ln,
+    lineText = lineStr,
+    lineAddr = la
     }
 
 -- | State monad for assembling the program
@@ -364,6 +381,7 @@ type ProgramBuilder = ExceptT ParseException (RWS SymbolTable Program ProgramBui
 -- | State for the program builder monad
 data ProgramBuilderState =
   ProgramBuilderState { pbsLineNum :: Int
+                      , pbsLineAddr :: Word16
                       , pbsLines :: ProgramText
                       }
 
@@ -377,7 +395,7 @@ runPB pbSt st pb = RWS.evalRWS (E.runExceptT pb) st pbSt
 
 -- | Set up initial state for the ProgramBuilder.
 pbsInit :: ProgramText -> ProgramBuilderState
-pbsInit progLines = ProgramBuilderState 1 progLines
+pbsInit progLines = ProgramBuilderState 0x0 1 progLines
 
 -- Basic functions on ProgramBuilder.
 
@@ -389,26 +407,54 @@ pbReadLineNum = lift S.get >>= return . pbsLineNum
 pbIncrLineNum :: ProgramBuilder ()
 pbIncrLineNum = lift $ S.modify $ \st -> st { pbsLineNum = 1 + pbsLineNum st }
 
+-- | Get the current line address
+pbReadLineAddr :: ProgramBuilder Word16
+pbReadLineAddr = lift S.get >>= return . pbsLineAddr
+
+-- | Set the current line address
+pbWriteLineAddr :: Word16 -> ProgramBuilder ()
+pbWriteLineAddr la = lift $ S.modify $ \st -> st { pbsLineAddr = la }
+
+-- | Increment the current line address
+pbIncrLineAddr :: ProgramBuilder ()
+pbIncrLineAddr = lift $ S.modify $ \st -> st { pbsLineAddr = 2 + pbsLineAddr st }
+
 -- | Get the next line of the program text, incrementing the line number. If the
 -- program text contains no more lines, throw an UnexpectedEOF exception.
 pbGetLine :: ProgramBuilder String
 pbGetLine = do
   st <- lift S.get
   pbIncrLineNum
-  lineNum <- pbReadLineNum
+  pbIncrLineAddr
+  ln <- pbReadLineNum
   case pbsLines st of
     (line : rst) -> do
       S.modify $ \pbsSt -> pbsSt { pbsLines = rst }
       return line
-    [] -> E.throwE (UnexpectedEOF lineNum)
+    [] -> E.throwE (UnexpectedEOF ln)
+
+-- | Parse the first line of the program text containing the entry point
+pbParseEntryPoint :: ProgramBuilder ()
+pbParseEntryPoint = do
+  ln <- pbReadLineNum -- should be 1
+  firstLine <- pbGetLine
+  case words firstLine of
+    [entrStr] -> do
+      case readMaybe entrStr of
+        Nothing -> do
+          E.throwE (BadEntryPoint ln firstLine)
+        Just entryPoint -> do
+          pbWriteLineAddr entryPoint
+    _ -> E.throwE (BadEntryPoint ln firstLine)
 
 -- | Parse a single line of assembly
 pbParseLine :: ProgramBuilder ()
 pbParseLine = do
   lineStr <- pbGetLine
-  lineNum <- pbReadLineNum
+  ln <- pbReadLineNum
+  la <- pbReadLineAddr
   st <- lift RWS.ask
-  let eline = parseLine lineNum st lineStr
+  let eline = parseLine ln la st lineStr
   case eline of
     Left  e    -> E.throwE e
     Right line -> lift $ RWS.tell [line]
@@ -427,7 +473,7 @@ pbBuildProgram = do
 buildProgram :: SymbolTable -> ProgramText -> (Maybe ParseException, Program)
 buildProgram st progLines =
   let (e, prog) = runPB (pbsInit progLines) st $ do
-        void pbGetLine -- skip first line containing entry point
+        pbParseEntryPoint
         pbBuildProgram
   in case e of
     Right _ -> (Nothing, prog)
@@ -436,7 +482,133 @@ buildProgram st progLines =
 ----------------------------------------
 -- Assembly
 
-assembleLine :: Line -> Word16
-assembleLine (Line (LineDataInstr opcode operands) _) =
-  undefined
+placeBits :: Int -> Int -> Word16 -> Word16
+placeBits lo hi w = (w .&. (bit bits - 1)) `shiftL` lo
+  where bits = hi - lo + 1
 
+-- FIXME: for the offsets, actually compute the offset and store it as an
+-- offset. Rename variables to match the LC-3b ISA perfectly
+assembleLine :: Line -> Either ParseException Word16
+assembleLine (Line (LineDataInstr opcode operands) ln lineStr la) =
+  case (opcode, operands) of
+    (ADD, [ OperandRegId dr
+          , OperandRegId sr1
+          , OperandRegId sr2 ] ) ->
+      let opBits  = placeBits 12 15 0x1
+          drBits  = placeBits 9  11 (fromIntegral dr)
+          sr1Bits = placeBits 6  8  (fromIntegral sr1)
+          sr2Bits = placeBits 0  2  (fromIntegral sr2)
+          selBit  = placeBits 5  5  0x1
+      in return $ opBits .|. drBits .|. sr1Bits .|. sr2Bits .|. selBit
+    (ADD, [ OperandRegId dr
+          , OperandRegId sr1
+          , OperandImm imm5 ] ) ->
+      let opBits  = placeBits 12 15 0x1
+          drBits  = placeBits 9  11 (fromIntegral dr)
+          sr1Bits = placeBits 6  8  (fromIntegral sr1)
+          immBits = placeBits 0  4  (fromIntegral imm5)
+          selBit  = placeBits 5  5  0x0
+      in return $ opBits .|. drBits .|. sr1Bits .|. immBits .|. selBit
+    (AND, [ OperandRegId dr
+          , OperandRegId sr1
+          , OperandRegId sr2 ] ) ->
+      let opBits  = placeBits 12 15 0x5
+          drBits  = placeBits 9  11 (fromIntegral dr)
+          sr1Bits = placeBits 6  8  (fromIntegral sr1)
+          sr2Bits = placeBits 0  2  (fromIntegral sr2)
+          selBit  = placeBits 5  5  0x1
+      in return $ opBits .|. drBits .|. sr1Bits .|. sr2Bits .|. selBit
+    (AND, [ OperandRegId dr
+          , OperandRegId sr1
+          , OperandImm imm5 ] ) ->
+      let opBits  = placeBits 12 15 0x5
+          drBits  = placeBits 9  11 (fromIntegral dr)
+          sr1Bits = placeBits 6  8  (fromIntegral sr1)
+          immBits = placeBits 0  4  (fromIntegral imm5)
+          selBit  = placeBits 5  5  0x0
+      in return $ opBits .|. drBits .|. sr1Bits .|. immBits .|. selBit
+    (BR, [ OperandImm imm9 ]) ->
+      let opBits  = placeBits 12 15 0x0
+          nzpBits = placeBits 9 11 0x7
+          immBits = placeBits 0 8 (fromIntegral imm9)
+      in return $ opBits .|. nzpBits .|. immBits
+    (BRn, [ OperandImm imm9 ]) ->
+      let opBits  = placeBits 12 15 0x0
+          nzpBits = placeBits 9 11 0x4
+          immBits = placeBits 0 8 (fromIntegral imm9)
+      in return $ opBits .|. nzpBits .|. immBits
+    (BRz, [ OperandImm imm9 ]) ->
+      let opBits  = placeBits 12 15 0x0
+          nzpBits = placeBits 9 11 0x2
+          immBits = placeBits 0 8 (fromIntegral imm9)
+      in return $ opBits .|. nzpBits .|. immBits
+    (BRp, [ OperandImm imm9 ]) ->
+      let opBits  = placeBits 12 15 0x0
+          nzpBits = placeBits 9 11 0x1
+          immBits = placeBits 0 8 (fromIntegral imm9)
+      in return $ opBits .|. nzpBits .|. immBits
+    (BRnz, [ OperandImm imm9 ]) ->
+      let opBits  = placeBits 12 15 0x0
+          nzpBits = placeBits 9 11 0x6
+          immBits = placeBits 0 8 (fromIntegral imm9)
+      in return $ opBits .|. nzpBits .|. immBits
+    (BRnp, [ OperandImm imm9 ]) ->
+      let opBits  = placeBits 12 15 0x0
+          nzpBits = placeBits 9 11 0x5
+          immBits = placeBits 0 8 (fromIntegral imm9)
+      in return $ opBits .|. nzpBits .|. immBits
+    (BRzp, [ OperandImm imm9 ]) ->
+      let opBits  = placeBits 12 15 0x0
+          nzpBits = placeBits 9 11 0x3
+          immBits = placeBits 0 8 (fromIntegral imm9)
+      in return $ opBits .|. nzpBits .|. immBits
+    (BRnzp, [ OperandImm imm9 ]) ->
+      let opBits  = placeBits 12 15 0x0
+          nzpBits = placeBits 9 11 0x7
+          immBits = placeBits 0 8 (fromIntegral imm9)
+      in return $ opBits .|. nzpBits .|. immBits
+    (JMP, [ OperandRegId baser ]) ->
+      let opBits    = placeBits 12 15 0xC
+          baserBits = placeBits 6 8 (fromIntegral baser)
+      in return $ opBits .|. baserBits
+    (JSR, [ OperandImm imm11 ]) ->
+      let opBits  = placeBits 12 15 0x4
+          selBit  = placeBits 11 11 0x1
+          immBits = placeBits 0 10 (fromIntegral imm11)
+      in return $ opBits .|. selBit .|. immBits
+    (JSRR, [ OperandRegId baser ]) ->
+      let opBits    = placeBits 12 15 0x4
+          selBit    = placeBits 11 11 0x0
+          baserBits = placeBits 6 8 (fromIntegral baser)
+      in return $ opBits .|. selBit .|. baserBits
+    (LDB, [ OperandRegId dr
+          , OperandRegId baser
+          , OperandImm imm6 ]) ->
+      let opBits    = placeBits 12 15 0x2
+          drBits    = placeBits 9 11 (fromIntegral dr)
+          baserBits = placeBits 6 8 (fromIntegral baser)
+          immBits   = placeBits 0 5 (fromIntegral imm6)
+      in return $ opBits .|. drBits .|. baserBits .|. immBits
+    (LDW, [ OperandRegId dr
+          , OperandRegId baser
+          , OperandImm imm6 ]) ->
+      let opBits    = placeBits 12 15 0x2
+          drBits    = placeBits 9 11 (fromIntegral dr)
+          baserBits = placeBits 6 8 (fromIntegral baser)
+          immBits   = placeBits 0 5 (fromIntegral (imm6 `shiftR` 1))
+      in return $ opBits .|. drBits .|. baserBits .|. immBits
+    (LEA, [ OperandRegId dr
+          , OperandImm imm9 ]) ->
+      let opBits = placeBits 12 15 0xE
+          drBits = placeBits 9 11 (fromIntegral dr)
+          immBits = placeBits 0 8 (fromIntegral imm9)
+      in return $ opBits .|. drBits .|. immBits
+    (NOT, [ OperandRegId dr
+          , OperandRegId sr ]) ->
+      let opBits = placeBits 12 15 0x9
+          drBits = placeBits 9 11 (fromIntegral dr)
+          srBits = placeBits 6 8 (fromIntegral sr)
+          oneBits = placeBits 0 5 0x3F
+      in return $ opBits .|. drBits .|. srBits .|. oneBits
+    (RET, []) -> return 0xC1C0
+    _ -> Left (OperandTypeError ln lineStr)
