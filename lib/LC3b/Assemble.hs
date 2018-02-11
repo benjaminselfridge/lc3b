@@ -78,7 +78,9 @@ data Operand = OperandRegId RegId
              | OperandImm Imm
   deriving (Show)
 
+-- | A register identifier (values between 0 and 7)
 type RegId = Word8
+-- | A 16-bit immediate value
 type Imm = Word16
 
 -- | We create one constructor for each assembly language opcode. Some of these are
@@ -111,8 +113,10 @@ data Opcode = ADD
             | XOR
   deriving (Show, Read)
 
+-- | Internal representation for an assembly language program.
 type Program = [Line]
 
+-- | The type for assembler exceptions.
 data ParseException = BadEntryPoint Int String
                     | InvalidOpcode Int String String
                     | InvalidOperand Int String String
@@ -528,45 +532,45 @@ assembleLine (Line (LineDataInstr opcode operands) ln lineStr la) =
           immBits = placeBits 0  4  (fromIntegral imm5)
           selBit  = placeBits 5  5  0x1
       in return $ opBits .|. drBits .|. sr1Bits .|. immBits .|. selBit
-    (BR, [ OperandImm off9 ]) ->
+    (BR, [ OperandImm addr ]) ->
       let opBits  = placeBits 12 15 0x0
           nzpBits = placeBits 9 11 0x7
-          offBits = placeBits 0 8 (fromIntegral (off9 - (la + 1)))
+          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 1)) `shiftR` 1))
       in return $ opBits .|. nzpBits .|. offBits
-    (BRn, [ OperandImm off9 ]) ->
+    (BRn, [ OperandImm addr ]) ->
       let opBits  = placeBits 12 15 0x0
           nzpBits = placeBits 9 11 0x4
-          offBits = placeBits 0 8 (fromIntegral (off9 - (la + 1)))
+          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 1)) `shiftR` 1))
       in return $ opBits .|. nzpBits .|. offBits
-    (BRz, [ OperandImm off9 ]) ->
+    (BRz, [ OperandImm addr ]) ->
       let opBits  = placeBits 12 15 0x0
           nzpBits = placeBits 9 11 0x2
-          offBits = placeBits 0 8 (fromIntegral (off9 - (la + 1)))
+          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 1)) `shiftR` 1))
       in return $ opBits .|. nzpBits .|. offBits
-    (BRp, [ OperandImm off9 ]) ->
+    (BRp, [ OperandImm addr ]) ->
       let opBits  = placeBits 12 15 0x0
           nzpBits = placeBits 9 11 0x1
-          offBits = placeBits 0 8 (fromIntegral (off9 - (la + 1)))
+          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 1)) `shiftR` 1))
       in return $ opBits .|. nzpBits .|. offBits
-    (BRnz, [ OperandImm off9 ]) ->
+    (BRnz, [ OperandImm addr ]) ->
       let opBits  = placeBits 12 15 0x0
           nzpBits = placeBits 9 11 0x6
-          offBits = placeBits 0 8 (fromIntegral (off9 - (la + 1)))
+          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 1)) `shiftR` 1))
       in return $ opBits .|. nzpBits .|. offBits
-    (BRnp, [ OperandImm off9 ]) ->
+    (BRnp, [ OperandImm addr ]) ->
       let opBits  = placeBits 12 15 0x0
           nzpBits = placeBits 9 11 0x5
-          offBits = placeBits 0 8 (fromIntegral (off9 - (la + 1)))
+          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 1)) `shiftR` 1))
       in return $ opBits .|. nzpBits .|. offBits
-    (BRzp, [ OperandImm off9 ]) ->
+    (BRzp, [ OperandImm addr ]) ->
       let opBits  = placeBits 12 15 0x0
           nzpBits = placeBits 9 11 0x3
-          offBits = placeBits 0 8 (fromIntegral (off9 - (la + 1)))
+          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 1)) `shiftR` 1))
       in return $ opBits .|. nzpBits .|. offBits
-    (BRnzp, [ OperandImm off9 ]) ->
+    (BRnzp, [ OperandImm addr ]) ->
       let opBits  = placeBits 12 15 0x0
           nzpBits = placeBits 9 11 0x7
-          offBits = placeBits 0 8 (fromIntegral (off9 - (la + 1)))
+          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 1)) `shiftR` 1))
       in return $ opBits .|. nzpBits .|. offBits
     (JMP, [ OperandRegId baser ]) ->
       let opBits    = placeBits 12 15 0xC
@@ -600,15 +604,15 @@ assembleLine (Line (LineDataInstr opcode operands) ln lineStr la) =
       in return $ opBits .|. drBits .|. baserBits .|. offBits
     (LEA, [ OperandRegId dr
           , OperandImm off9 ]) ->
-      let opBits = placeBits 12 15 0xE
-          drBits = placeBits 9 11 (fromIntegral dr)
+      let opBits  = placeBits 12 15 0xE
+          drBits  = placeBits 9 11 (fromIntegral dr)
           offBits = placeBits 0 8 (fromIntegral off9)
       in return $ opBits .|. drBits .|. offBits
     (NOT, [ OperandRegId dr
           , OperandRegId sr ]) ->
-      let opBits = placeBits 12 15 0x9
-          drBits = placeBits 9 11 (fromIntegral dr)
-          srBits = placeBits 6 8 (fromIntegral sr)
+      let opBits  = placeBits 12 15 0x9
+          drBits  = placeBits 9 11 (fromIntegral dr)
+          srBits  = placeBits 6 8 (fromIntegral sr)
           oneBits = placeBits 0 5 0x3F
       in return $ opBits .|. drBits .|. srBits .|. oneBits
     (RET, []) -> return 0xC1C0
@@ -616,48 +620,48 @@ assembleLine (Line (LineDataInstr opcode operands) ln lineStr la) =
     (LSHF, [ OperandRegId dr
            , OperandRegId sr
            , OperandImm amount4 ]) ->
-      let opBits = placeBits 12 15 0xD
-          drBits = placeBits 9  11 (fromIntegral dr)
-          srBits = placeBits 6  8  (fromIntegral sr)
-          selBits = placeBits 4 5  0x0
+      let opBits      = placeBits 12 15 0xD
+          drBits      = placeBits 9  11 (fromIntegral dr)
+          srBits      = placeBits 6  8  (fromIntegral sr)
+          selBits     = placeBits 4 5  0x0
           amount4Bits = placeBits 0 3 (fromIntegral amount4)
       in return $ opBits .|. drBits .|. srBits .|. selBits .|. amount4Bits
     (RSHFL, [ OperandRegId dr
             , OperandRegId sr
             , OperandImm amount4 ]) ->
-      let opBits = placeBits 12 15 0xD
-          drBits = placeBits 9  11 (fromIntegral dr)
-          srBits = placeBits 6  8  (fromIntegral sr)
-          selBits = placeBits 4 5  0x1
+      let opBits      = placeBits 12 15 0xD
+          drBits      = placeBits 9  11 (fromIntegral dr)
+          srBits      = placeBits 6  8  (fromIntegral sr)
+          selBits     = placeBits 4 5  0x1
           amount4Bits = placeBits 0 3 (fromIntegral amount4)
       in return $ opBits .|. drBits .|. srBits .|. selBits .|. amount4Bits
     (RSHFA, [ OperandRegId dr
             , OperandRegId sr
             , OperandImm amount4 ]) ->
-      let opBits = placeBits 12 15 0xD
-          drBits = placeBits 9  11 (fromIntegral dr)
-          srBits = placeBits 6  8  (fromIntegral sr)
-          selBits = placeBits 4 5  0x3
+      let opBits      = placeBits 12 15 0xD
+          drBits      = placeBits 9  11 (fromIntegral dr)
+          srBits      = placeBits 6  8  (fromIntegral sr)
+          selBits     = placeBits 4 5  0x3
           amount4Bits = placeBits 0 3 (fromIntegral amount4)
       in return $ opBits .|. drBits .|. srBits .|. selBits .|. amount4Bits
     (STB, [ OperandRegId sr
           , OperandRegId baser
           , OperandImm boffset6 ]) ->
-      let opBits = placeBits 12 15 0x3
-          srBits = placeBits 9  11 (fromIntegral sr)
-          baserBits = placeBits 6 8 (fromIntegral baser)
+      let opBits       = placeBits 12 15 0x3
+          srBits       = placeBits 9  11 (fromIntegral sr)
+          baserBits    = placeBits 6 8 (fromIntegral baser)
           boffset6Bits = placeBits 0 5 (fromIntegral boffset6)
       in return $ opBits .|. srBits .|. baserBits .|. boffset6Bits
     (STW, [ OperandRegId sr
           , OperandRegId baser
           , OperandImm offset6 ]) ->
-      let opBits = placeBits 12 15 0x3
-          srBits = placeBits 9  11 (fromIntegral sr)
-          baserBits = placeBits 6 8 (fromIntegral baser)
+      let opBits      = placeBits 12 15 0x3
+          srBits      = placeBits 9  11 (fromIntegral sr)
+          baserBits   = placeBits 6 8 (fromIntegral baser)
           offset6Bits = placeBits 0 5 (fromIntegral (offset6 `shiftR` 1))
       in return $ opBits .|. srBits .|. baserBits .|. offset6Bits
     (TRAP, [ OperandImm trapvect8 ]) ->
-      let opBits = placeBits 12 15 0xF
+      let opBits        = placeBits 12 15 0xF
           trapvect8Bits = placeBits 0 7 trapvect8
       in return $ opBits .|. trapvect8Bits
     (XOR, [ OperandRegId dr

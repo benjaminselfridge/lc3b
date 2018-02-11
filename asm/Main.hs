@@ -6,11 +6,13 @@ import System.Environment (getArgs)
 import System.Exit ( ExitCode(..)
                    , exitWith
                    )
+import System.FilePath.Posix ( replaceExtension )
 import System.IO ( IOMode(..)
                  , withFile
                  )
 
 import LC3b.Assemble
+import LC3b.Utils
 
 main = do
   args <- getArgs
@@ -21,19 +23,17 @@ main = do
     exitWith $ ExitFailure 1
 
   forM args $ \fileName -> do
-    putStrLn ("Assembling " ++ fileName ++ "...")
     progStr <- readFile fileName
     let progTxt = lines progStr
     let (symErr, symTable, ep) = buildSymbolTable progTxt
-    print symTable
     let (parseErr, prog) = buildProgram symTable progTxt
     let eBytes = assembleProgram prog
     case (symErr, parseErr, eBytes) of
       (Nothing, Nothing, Right bytes) -> do
-        putStrLn $ "Program entry point: " ++ show ep
-        -- mapM_ print prog
-        putStrLn $ "Program bytes: "
-        print (BS.unpack bytes)
+        let outFileName = replaceExtension fileName ".out"
+        BS.writeFile outFileName (BS.cons (hgh8B ep)
+                                  (BS.cons (low8B ep)
+                                   bytes))
       (Just e,_,_) ->
         putStrLn ("Error building symbol table:\n" ++ show e)
       (_,Just e,_) ->

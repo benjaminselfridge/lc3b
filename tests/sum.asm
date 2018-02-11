@@ -1,10 +1,10 @@
         0x3000
-START:  AND  R0 R0 0x0          ; R0 <- 0x0
-        ADD  R0 R0 0x10         ; R0 <- 0x10
-        AND  R1 R1 0x0          ; R1 <- 0 (sum)
-LOOP:   AND  R0 R0 R0           ; Set NZP on R0
-        BRnz END                ; If R0 <= 0, jump to end
-        ADD  R1 R1 R0           ; R1 += R0
-        ADD  R0 R0 0xFFFF       ; R0 -= 1
-        BR   LOOP
-END:    TRAP 0x0
+START:  AND  R0 R0 0x0          ; 0x5020
+        ADD  R0 R0 0x10         ; 0x1030
+        AND  R1 R1 0x0          ; 0x5260
+LOOP:   AND  R0 R0 R0           ; 0x5000
+        BRnz END                ; 0x0C03
+        ADD  R1 R1 R0           ; 0x1240
+        ADD  R0 R0 0xFFFF       ; 0x103F
+        BR   LOOP               ; 0x0FFB
+END:    TRAP 0x0                ; 0xF000
