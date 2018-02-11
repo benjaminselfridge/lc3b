@@ -1,6 +1,7 @@
 module Main where
 
 import Control.Monad (when, forM)
+import qualified Data.ByteString as BS
 import System.Environment (getArgs)
 import System.Exit ( ExitCode(..)
                    , exitWith
@@ -23,14 +24,19 @@ main = do
     putStrLn ("Assembling " ++ fileName ++ "...")
     progStr <- readFile fileName
     let progTxt = lines progStr
-    let (err, symTable, ep) = buildSymbolTable progTxt
+    let (symErr, symTable, ep) = buildSymbolTable progTxt
     print symTable
-    let (err', prog) = buildProgram symTable progTxt
-    case (err, err') of
-      (Nothing, Nothing) -> do
+    let (parseErr, prog) = buildProgram symTable progTxt
+    let eBytes = assembleProgram prog
+    case (symErr, parseErr, eBytes) of
+      (Nothing, Nothing, Right bytes) -> do
         putStrLn $ "Program entry point: " ++ show ep
-        mapM_ print prog
-      (Just e,_) ->
+        -- mapM_ print prog
+        putStrLn $ "Program bytes: "
+        print (BS.unpack bytes)
+      (Just e,_,_) ->
         putStrLn ("Error building symbol table:\n" ++ show e)
-      (_, Just e') ->
-        putStrLn ("Error parsing program:\n" ++ show e')
+      (_,Just e,_) ->
+        putStrLn ("Error parsing program:\n" ++ show e)
+      (_,_,Left e) ->
+        putStrLn ("Error assembling program:\n" ++ show e)

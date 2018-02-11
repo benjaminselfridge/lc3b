@@ -9,7 +9,7 @@ import           Data.Bits ( (.&.)
                            , complement
                            , setBit
                            , testBit)
-import qualified Data.ByteString as B
+import qualified Data.ByteString as BS
 import           Data.ByteString (ByteString)
 import           Data.Char (isSpace)
 import           Data.Word (Word8, Word16)
@@ -18,7 +18,7 @@ import           Numeric (showHex)
 writeBS :: (Enum i, Ix i) => i -> ByteString -> Array i Word8 -> Array i Word8
 writeBS startIx bs array = A.accum amap array bsAlist
   where amap = flip const
-        bsAlist = zip [startIx..] (B.unpack bs)
+        bsAlist = zip [startIx..] (BS.unpack bs)
 
 -- | Sign-extend a k-bit value to 16 bits.
 sext :: Int -> Word16 -> Word16
@@ -57,3 +57,6 @@ firstWord str = do
   case w of
     "" -> Nothing
     _  -> Just (w, str')
+
+wordsToBS :: [Word16] -> ByteString
+wordsToBS ws = BS.pack $ concat $ [ [hgh8B w, low8B w] | w <- ws ]
