@@ -7,29 +7,49 @@ import Data.List (intercalate)
 import Data.Array ((!))
 import Numeric (showHex)
 import Data.Word
+import System.Environment (getArgs)
+import System.Exit ( ExitCode(..)
+                   , exitWith
+                   )
+import System.FilePath.Posix ( replaceExtension )
+import System.IO ( IOMode(..)
+                 , withFile
+                 )
+
 
 import LC3b.Machine
 import LC3b.Semantics
-
-m :: Machine
-m = initMachine 0x3000 $ B.pack
-  [ 0x21
-  , 0x10 -- ADD r0, r0, 0x1
-  , 0x00
-  , 0x10 -- ADD r0, r0, r0
-  , 0x00
-  , 0x10 -- ADD r0, r0, r0
-  , 0x00
-  , 0xf0 -- HALT
-  ]
+import LC3b.Utils
 
 runMachine :: Machine -> MachineM Identity a -> (a, Machine)
 runMachine m action = runIdentity $ runStateT (runMachineM action) m
 
+bsInitMachine :: B.ByteString -> Either SimException Machine
+bsInitMachine bs = case B.unpack bs of
+  (epHgh8 : epLow8 : progBytes) -> return $ initMachine (mkWord16 epHgh8 epLow8) (B.pack progBytes)
+  _ -> Left IllFormedException
+
+data SimException = IllFormedException
+  deriving Show
+
 main :: IO ()
 main = do
-  putStrLn $ showMachine m
-  let (_, m')= runMachine m $ do
-        stepMachineTillHalted 20
-  putStrLn $ showMachine m'
-  return ()
+  args <- getArgs
+
+  -- Exit if no file name supplied
+  when (null args) $ do
+    putStrLn "Supply a binary to be simulated"
+    exitWith $ ExitFailure 1
+
+  case args of
+    [fileName] -> do
+      progBytes <- B.readFile fileName
+      let eMachine = bsInitMachine progBytes
+      case eMachine of
+        Left IllFormedException -> do
+          putStrLn "ill-formed binary"
+          exitWith $ ExitFailure 1
+        Right m -> do
+          let (_, m') = runMachine m $ do
+                stepMachineTillHalted 4
+          putStrLn $ showMachine m'

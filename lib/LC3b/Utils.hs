@@ -45,6 +45,9 @@ low8B x = fromIntegral (x .&. 0x00ff)
 hgh8B :: Word16 -> Word8
 hgh8B x = fromIntegral ((x .&. 0xff00) `shiftR` 8)
 
+mkWord16 :: Word8 -> Word8 -> Word16
+mkWord16 hgh8 low8 = ((fromIntegral hgh8 :: Word16) `shiftL` 8) .|. fromIntegral low8
+
 showHex8 :: Word8 -> String
 showHex8 x = "0x" ++ showHex x ""
 
