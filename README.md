@@ -8,4 +8,3 @@ This project is incomplete.
 
 Simulator and assembler are both nominally complete; next up is infrastructure stuff:
   - Test suite (assembler & simulator)
-  - Command line interfaces for both assembler and simulator
