@@ -8,11 +8,14 @@ module LC3b.Semantics where
 
 import           Control.Monad (when)
 import           Control.Monad.Except
+import qualified Control.Monad.Identity as I
 import qualified Control.Monad.Trans.State.Lazy as S
 import           Control.Monad.Trans.State.Lazy (StateT)
 import qualified Data.Array as A
 import           Data.Word (Word8, Word16)
 import qualified Data.Bits as B
+
+import Debug.Trace (traceM)
 
 import LC3b.Machine
 import LC3b.Utils
@@ -22,6 +25,9 @@ newtype MachineM m a = MachineM { runMachineM :: StateT Machine m a }
   deriving (Functor,
             Applicative,
             Monad)
+
+runMachine :: Machine -> MachineM I.Identity a -> (a, Machine)
+runMachine m action = I.runIdentity $ S.runStateT (runMachineM action) m
 
 -- Base state transformations.
 -- | Get the value of the PC.
@@ -103,6 +109,7 @@ addPC :: Monad m => Word16 -> MachineM m ()
 addPC offset = do
   curPC <- readPC
   writePC (curPC + offset)
+  
 -- Transformations for each opcode.
 -- I'm abstracting a bit from the definitions of the instructions here. I'm not
 -- modeling the immediate expansion (sign extension of a k-bit immediate to 16 bits)
@@ -312,6 +319,8 @@ stepMachine = do
   -- Fetch the current instruction
   curPC <- readPC
   instr <- readMem16 curPC
+
+  traceM $ "Executing instruction: " ++ showHex16 instr ++ "\n"
 
   -- Get the opcode
   let opcode = instr `B.shiftR` 12 -- high 4 bits are opcode

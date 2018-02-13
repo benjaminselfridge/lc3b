@@ -62,4 +62,4 @@ firstWord str = do
     _  -> Just (w, str')
 
 wordsToBS :: [Word16] -> ByteString
-wordsToBS ws = BS.pack $ concat $ [ [hgh8B w, low8B w] | w <- ws ]
+wordsToBS ws = BS.pack $ concat $ [ [low8B w, hgh8B w] | w <- ws ]

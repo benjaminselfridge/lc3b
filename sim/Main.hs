@@ -16,13 +16,10 @@ import System.IO ( IOMode(..)
                  , withFile
                  )
 
-
+import LC3b.IO
 import LC3b.Machine
 import LC3b.Semantics
 import LC3b.Utils
-
-runMachine :: Machine -> MachineM Identity a -> (a, Machine)
-runMachine m action = runIdentity $ runStateT (runMachineM action) m
 
 bsInitMachine :: B.ByteString -> Either SimException Machine
 bsInitMachine bs = case B.unpack bs of
@@ -50,6 +47,5 @@ main = do
           putStrLn "ill-formed binary"
           exitWith $ ExitFailure 1
         Right m -> do
-          let (_, m') = runMachine m $ do
-                stepMachineTillHalted 4
+          let (_, m') = runMachine m $ stepMachineTillHalted 20
           putStrLn $ showMachine m'

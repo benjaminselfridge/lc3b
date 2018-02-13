@@ -15,6 +15,7 @@ extra-source-files:  README.md
 
 library
   exposed-modules:     LC3b.Assemble
+                     , LC3b.IO
                      , LC3b.Machine
                      , LC3b.Semantics
                      , LC3b.Utils
@@ -32,9 +33,10 @@ library
 executable lc3b-sim
   hs-source-dirs:      lib, sim
   main-is:             Main.hs
-  other-modules:       LC3b.Machine,
-                       LC3b.Semantics,
-                       LC3b.Utils
+  other-modules:       LC3b.IO
+                     , LC3b.Machine
+                     , LC3b.Semantics
+                     , LC3b.Utils
   default-language:    Haskell2010
   build-depends:       array >= 0.5 && < 0.6
                      , base >= 4.7 && < 5
