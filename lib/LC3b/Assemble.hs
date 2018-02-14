@@ -34,7 +34,6 @@ import           Data.Bits ( (.&.)
                            )
 import           Data.ByteString (ByteString)
 import           Data.Char (isSpace)
-import           Data.List ( isPrefixOf )
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Word (Word8, Word16)
@@ -357,8 +356,8 @@ readOperand str = do
     "R6" -> return $ OperandRegId 6
     "R7" -> return $ OperandRegId 7
     _ -> do
-      case ("0x" `isPrefixOf` str, M.lookup str st) of
-        (True,     _) -> return $ OperandImm (read str)
+      case (readMaybe str, M.lookup str st) of
+        (Just imm, _) -> return $ OperandImm imm
         (_, Just imm) -> return $ OperandImm imm
         _ -> E.throwE (InvalidOperand ln str line)
 
@@ -461,10 +460,14 @@ pbParseLine = do
   la <- pbReadLineAddr
   lineStr <- pbGetLine
   st <- lift RWS.ask
-  let eline = parseLine ln la st lineStr
-  case eline of
-    Left  e    -> E.throwE e
-    Right line -> lift $ RWS.tell [line]
+  case words lineStr of
+    [] -> return ()
+    ((';':_):_) -> return ()
+    _  -> do
+      let eline = parseLine ln la st lineStr
+      case eline of
+        Left  e    -> E.throwE e
+        Right line -> lift $ RWS.tell [line]
 
 -- | Parse the entire program
 pbBuildProgram :: ProgramBuilder ()
