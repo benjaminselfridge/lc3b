@@ -66,8 +66,11 @@ test-suite lc3b-tests
   default-language: Haskell2010
   ghc-options: -Wall
   main-is: Main.hs
-  other-modules:
-  hs-source-dirs: tests
+  other-modules:       LC3b.Assemble
+                     , LC3b.Machine
+                     , LC3b.Semantics
+                     , LC3b.Utils
+  hs-source-dirs: tests, lib
   build-depends:       array >= 0.5 && < 0.6
                      , base >= 4.7 && < 5
                      , bv >= 0.4 && < 0.5

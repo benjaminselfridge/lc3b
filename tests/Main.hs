@@ -1,12 +1,22 @@
 module Main where
 
-import Control.Monad (forM_)
+import Control.Monad (forM_, when)
+import Data.Array ((!))
+import qualified  Data.ByteString as BS
 import Data.Word
 import System.FilePath.Glob ( namesMatching )
 import System.FilePath.Posix
+import System.Exit ( ExitCode(..)
+                   , exitWith
+                   )
 import Text.Read (readMaybe)
 import qualified Test.Tasty as T
 import qualified Test.Tasty.HUnit as T
+
+import LC3b.Assemble
+import LC3b.Machine
+import LC3b.Semantics
+import LC3b.Utils
 
 data Req = RegContains Word8 Word16
   deriving (Show, Read)
@@ -24,9 +34,50 @@ main = do
 asmTests :: [FilePath] -> T.TestTree
 asmTests = T.testGroup "LC3b" . map mkTest
 
+bsInitMachine :: BS.ByteString -> Either SimException Machine
+bsInitMachine bs = case BS.unpack bs of
+  (epHgh8 : epLow8 : progBytes) -> return $ initMachine (mkWord16 epHgh8 epLow8) (BS.pack progBytes)
+  _ -> Left IllFormedException
+
+data SimException = IllFormedException
+  deriving Show
+
 mkTest :: FilePath -> T.TestTree
 mkTest fp = T.testCase fp $ do
   expectedTxt <- readFile fp
   case readMaybe expectedTxt :: Maybe Spec of
     Nothing -> error $ "could not parse spec " ++ fp
-    Just spec -> print spec
+    Just spec -> do
+      let fpAsm = replaceExtension fp ".asm"
+      asmTxt <- readFile fpAsm
+      let progTxt = lines asmTxt
+      let (symErr, symTable, ep) = buildSymbolTable progTxt
+      let (parseErr, prog) = buildProgram symTable progTxt
+      let eBytes = assembleProgram prog
+      let outFileName = replaceExtension fpAsm ".out"
+      case (symErr, parseErr, eBytes) of
+        (Nothing, Nothing, Right bytes) -> do
+          BS.writeFile outFileName (BS.cons (hgh8B ep)
+                                    (BS.cons (low8B ep)
+                                     bytes))
+        (Just e,_,_) ->
+          putStrLn ("Error building symbol table:\n" ++ show e)
+        (_,Just e,_) ->
+          putStrLn ("Error parsing program:\n" ++ show e)
+        (_,_,Left e) ->
+          putStrLn ("Error assembling program:\n" ++ show e)
+
+      -- We've written the binary
+      progBytes <- BS.readFile outFileName
+      let eMachine = bsInitMachine progBytes
+      case eMachine of
+        Left IllFormedException -> do
+          putStrLn "ill-formed binary"
+          exitWith $ ExitFailure 1
+        Right m -> do
+          let (_, m') = runMachine m $ stepMachineTillHalted 20
+          forM_ spec $ \req -> case req of
+            RegContains rid w -> do
+              let rval = gprs m' ! rid
+              when (rval /= w) $
+                error $ "r" ++ show rid ++ " is " ++ show rval ++ ", should be " ++ show w

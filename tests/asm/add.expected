@@ -1,1 +1,4 @@
-[ RegContains 2 0x9 ]
+[ RegContains 0 9
+, RegContains 1 18
+, RegContains 2 27
+]
