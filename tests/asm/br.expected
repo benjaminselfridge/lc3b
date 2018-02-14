@@ -1,1 +1,3 @@
-[ RegContains 0 0 ]
+[ RegContains 0 1
+, RegContains 1 -2
+]
