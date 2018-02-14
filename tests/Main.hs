@@ -6,9 +6,6 @@ import qualified  Data.ByteString as BS
 import Data.Word
 import System.FilePath.Glob ( namesMatching )
 import System.FilePath.Posix
-import System.Exit ( ExitCode(..)
-                   , exitWith
-                   )
 import Text.Read (readMaybe)
 import qualified Test.Tasty as T
 import qualified Test.Tasty.HUnit as T
@@ -61,19 +58,18 @@ mkTest fp = T.testCase fp $ do
                                     (BS.cons (low8B ep)
                                      bytes))
         (Just e,_,_) ->
-          putStrLn ("Error building symbol table:\n" ++ show e)
+          error ("Error building symbol table:\n" ++ show e)
         (_,Just e,_) ->
-          putStrLn ("Error parsing program:\n" ++ show e)
+          error ("Error parsing program:\n" ++ show e)
         (_,_,Left e) ->
-          putStrLn ("Error assembling program:\n" ++ show e)
+          error ("Error assembling program:\n" ++ show e)
 
       -- We've written the binary
       progBytes <- BS.readFile outFileName
       let eMachine = bsInitMachine progBytes
       case eMachine of
         Left IllFormedException -> do
-          putStrLn "ill-formed binary"
-          exitWith $ ExitFailure 1
+          error "ill-formed binary"
         Right m -> do
           let (_, m') = runMachine m $ stepMachineTillHalted 20
           forM_ spec $ \req -> case req of

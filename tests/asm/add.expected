@@ -1,4 +1,6 @@
 [ RegContains 0 9
 , RegContains 1 18
 , RegContains 2 27
+, RegContains 3 26
+, RegContains 4 42
 ]

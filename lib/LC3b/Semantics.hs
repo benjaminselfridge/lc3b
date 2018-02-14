@@ -15,7 +15,7 @@ import qualified Data.Array as A
 import           Data.Word (Word8, Word16)
 import qualified Data.Bits as B
 
--- import Debug.Trace (traceM)
+import Debug.Trace (traceM)
 
 import LC3b.Machine
 import LC3b.Utils
@@ -159,8 +159,8 @@ br :: Monad m => Bool -> Bool -> Bool -> Word16 -> MachineM m ()
 br checkN checkZ checkP offset = do
   (n, z, p) <- readNZP
   let cond = (n && checkN) || (z && checkZ) || (p && checkP)
+  incPC
   when cond (addPC offset)
-  unless cond incPC
 
 -- JMP, all variants
 -- when baser == 7, this is considered a RET
@@ -320,7 +320,7 @@ stepMachine = do
   curPC <- readPC
   instr <- readMem16 curPC
 
-  -- traceM $ "Executing instruction: " ++ showHex16 instr ++ "\n"
+  traceM $ "Executing instruction: " ++ showHex16 instr
 
   -- Get the opcode
   let opcode = instr `B.shiftR` 12 -- high 4 bits are opcode

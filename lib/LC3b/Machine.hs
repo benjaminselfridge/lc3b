@@ -30,8 +30,8 @@ initMachine entry prog =
             -- init all GPRs to 0
           , memory = writeBS entry prog emptyMem
             -- init memory to contain program at specified entry point
-          , nzp = (False, False, False)
-            -- init condition codes to 0
+          , nzp = (False, True, False)
+            -- init condition codes to Z
           , halted = False
             -- init in running state
           }

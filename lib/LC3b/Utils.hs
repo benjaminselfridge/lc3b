@@ -28,7 +28,7 @@ sext k x = if testBit x (k-1)
   where mask = complement (setBit 0 k - 1)
 
 extract :: Integral a => Int -> Int -> Word16 -> a
-extract low hgh x = fromIntegral $ x `shiftR` low .&. complement (0xffff `shiftL` (hgh-low))
+extract low hgh x = fromIntegral $ x `shiftR` low .&. complement (0xffff `shiftL` (hgh-low+1))
 
 -- | Word16 arithmetic shift
 ashiftR :: Word16 -> Int -> Word16

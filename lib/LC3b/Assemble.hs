@@ -42,7 +42,7 @@ import           Text.Read (readMaybe)
 
 import LC3b.Utils
 
-import Debug.Trace (trace)
+-- import Debug.Trace (traceM)
 
 ----------------------------------------
 -- Types
@@ -360,8 +360,7 @@ readOperand str = do
       case ("0x" `isPrefixOf` str, M.lookup str st) of
         (True,     _) -> return $ OperandImm (read str)
         (_, Just imm) -> return $ OperandImm imm
-        _ -> trace ("<" ++ str ++ ">") $
-             E.throwE (InvalidOperand ln str line)
+        _ -> E.throwE (InvalidOperand ln str line)
 
 -- | Parse the operand list.
 lpParseOperands :: LineParser [Operand]
@@ -426,17 +425,18 @@ pbWriteLineAddr la = lift $ S.modify $ \st -> st { pbsLineAddr = la }
 pbIncrLineAddr :: ProgramBuilder ()
 pbIncrLineAddr = lift $ S.modify $ \st -> st { pbsLineAddr = 2 + pbsLineAddr st }
 
--- | Get the next line of the program text, incrementing the line number. If the
--- program text contains no more lines, throw an UnexpectedEOF exception.
+-- | Get the next line of the program text, incrementing the line number and line
+-- address. If the program text contains no more lines, throw an UnexpectedEOF
+-- exception.
 pbGetLine :: ProgramBuilder String
 pbGetLine = do
   st <- lift S.get
-  pbIncrLineNum
-  pbIncrLineAddr
   ln <- pbReadLineNum
   case pbsLines st of
     (line : rst) -> do
       S.modify $ \pbsSt -> pbsSt { pbsLines = rst }
+      pbIncrLineNum
+      pbIncrLineAddr
       return line
     [] -> E.throwE (UnexpectedEOF ln)
 
@@ -457,9 +457,9 @@ pbParseEntryPoint = do
 -- | Parse a single line of assembly
 pbParseLine :: ProgramBuilder ()
 pbParseLine = do
-  lineStr <- pbGetLine
   ln <- pbReadLineNum
   la <- pbReadLineAddr
+  lineStr <- pbGetLine
   st <- lift RWS.ask
   let eline = parseLine ln la st lineStr
   case eline of
@@ -535,42 +535,42 @@ assembleLine (Line (LineDataInstr opcode operands) ln lineStr la) =
     (BR, [ OperandImm addr ]) ->
       let opBits  = placeBits 12 15 0x0
           nzpBits = placeBits 9 11 0x7
-          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 1)) `shiftR` 1))
+          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 2)) `shiftR` 1))
       in return $ opBits .|. nzpBits .|. offBits
     (BRn, [ OperandImm addr ]) ->
       let opBits  = placeBits 12 15 0x0
           nzpBits = placeBits 9 11 0x4
-          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 1)) `shiftR` 1))
+          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 2)) `shiftR` 1))
       in return $ opBits .|. nzpBits .|. offBits
     (BRz, [ OperandImm addr ]) ->
       let opBits  = placeBits 12 15 0x0
           nzpBits = placeBits 9 11 0x2
-          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 1)) `shiftR` 1))
+          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 2)) `shiftR` 1))
       in return $ opBits .|. nzpBits .|. offBits
     (BRp, [ OperandImm addr ]) ->
       let opBits  = placeBits 12 15 0x0
           nzpBits = placeBits 9 11 0x1
-          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 1)) `shiftR` 1))
+          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 2)) `shiftR` 1))
       in return $ opBits .|. nzpBits .|. offBits
     (BRnz, [ OperandImm addr ]) ->
       let opBits  = placeBits 12 15 0x0
           nzpBits = placeBits 9 11 0x6
-          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 1)) `shiftR` 1))
+          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 2)) `shiftR` 1))
       in return $ opBits .|. nzpBits .|. offBits
     (BRnp, [ OperandImm addr ]) ->
       let opBits  = placeBits 12 15 0x0
           nzpBits = placeBits 9 11 0x5
-          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 1)) `shiftR` 1))
+          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 2)) `shiftR` 1))
       in return $ opBits .|. nzpBits .|. offBits
     (BRzp, [ OperandImm addr ]) ->
       let opBits  = placeBits 12 15 0x0
           nzpBits = placeBits 9 11 0x3
-          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 1)) `shiftR` 1))
+          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 2)) `shiftR` 1))
       in return $ opBits .|. nzpBits .|. offBits
     (BRnzp, [ OperandImm addr ]) ->
       let opBits  = placeBits 12 15 0x0
           nzpBits = placeBits 9 11 0x7
-          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 1)) `shiftR` 1))
+          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 2)) `shiftR` 1))
       in return $ opBits .|. nzpBits .|. offBits
     (JMP, [ OperandRegId baser ]) ->
       let opBits    = placeBits 12 15 0xC
