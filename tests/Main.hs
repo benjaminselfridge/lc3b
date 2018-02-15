@@ -71,7 +71,7 @@ mkTest fp = T.testCase fp $ do
         Left IllFormedException -> do
           error "ill-formed binary"
         Right m -> do
-          let (_, m') = runMachine m $ stepMachineTillHalted 20
+          let (_, m') = runMachine m $ stepMachineTillHalted 100
           forM_ spec $ \req -> case req of
             RegContains rid w -> do
               let rval = gprs m' ! rid
