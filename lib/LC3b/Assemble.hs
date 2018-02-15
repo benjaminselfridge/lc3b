@@ -243,12 +243,12 @@ stbParseLine :: SymbolTableBuilder ()
 stbParseLine = do
   lineStr <- stbGetLine
   case words lineStr of
+    -- If the line contains only a comment or whitespace, skip it entirely.
+    [] -> return ()
+    ((';':_):_) -> return ()
     (label : _) -> do
       when (isLabel label) $ stbAddSymbol (init label)
-      -- FIXME: don't increment the PC on a pure comment line
-      -- When we get the line parser working we can come back and fix this piece
-      stbIncrPC -- since we found a nonempty line, increment the PC
-    [] -> return ()
+      stbIncrPC
 
 -- | Read the first line of the program to set the entry point. You must call this
 -- function *before* calling stbBuildSymbolTable. We also return the entry point for

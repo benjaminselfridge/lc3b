@@ -7,7 +7,6 @@
 module LC3b.Semantics where
 
 import           Control.Monad (when)
-import           Control.Monad.Except
 import qualified Control.Monad.Identity as I
 import qualified Control.Monad.Trans.State.Lazy as S
 import           Control.Monad.Trans.State.Lazy (StateT)
@@ -320,7 +319,7 @@ stepMachine = do
   curPC <- readPC
   instr <- readMem16 curPC
 
-  traceM $ "Executing instruction: " ++ showHex16 instr
+  traceM $ "Instruction: " ++ showHex16 instr ++ ", PC: " ++ showHex16 curPC
 
   -- Get the opcode
   let opcode = instr `B.shiftR` 12 -- high 4 bits are opcode
