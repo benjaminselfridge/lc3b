@@ -20,66 +20,67 @@ import LC3b.Machine
 import LC3b.Utils
 
 -- | The LC3b state monad
-newtype MachineM m a = MachineM { runMachineM :: StateT Machine m a }
+newtype MachineT m a = MachineT { runMachineT :: StateT Machine m a }
   deriving (Functor,
             Applicative,
             Monad)
 
-runMachine :: Machine -> MachineM I.Identity a -> (a, Machine)
-runMachine m action = I.runIdentity $ S.runStateT (runMachineM action) m
+runMachine :: Machine -> MachineT I.Identity a -> (a, Machine)
+runMachine m action = I.runIdentity $ S.runStateT (runMachineT action) m
 
 -- Base state transformations.
 -- | Get the value of the PC.
-readPC :: Monad m => MachineM m Word16
-readPC = MachineM $ do
+readPC :: Monad m => MachineT m Word16
+readPC = MachineT $ do
   machine <- S.get
   return $ pc machine
 
 -- | Write to the PC.
-writePC :: Monad m => Word16 -> MachineM m ()
-writePC val = MachineM $ S.modify $ \machine ->
+writePC :: Monad m => Word16 -> MachineT m ()
+writePC val = MachineT $ S.modify $ \machine ->
   machine { pc = val }
 
 -- | Get the value of a register.
 -- Guard against out-of-bounds accesses by just zeroing out all but the least 3
 -- significant bits.
-readReg :: Monad m => Word8 -> MachineM m Word16
-readReg i = MachineM $ do
+readReg :: Monad m => Word8 -> MachineT m Word16
+readReg i = MachineT $ do
   machine <- S.get
   return $ (gprs machine) A.! (i B..&. 0b111)
 
 -- | Write to a register.
-writeReg :: Monad m => Word8 -> Word16 -> MachineM m ()
-writeReg i val = MachineM $ S.modify $ \machine ->
+writeReg :: Monad m => Word8 -> Word16 -> MachineT m ()
+writeReg i val = MachineT $ S.modify $ \machine ->
   machine { gprs = gprs machine A.// [(i B..&. 0b111,val)] }
 
 -- | Get the value of a memory location.
-readMem :: Monad m => Word16 -> MachineM m Word8
-readMem i = MachineM $ do
+readMem :: Monad m => Word16 -> MachineT m Word8
+readMem i = MachineT $ do
   machine <- S.get
   return $ memory machine A.! i
 
-readMem16 :: Monad m => Word16 -> MachineM m Word16
-readMem16 i = MachineM $ do
+-- | Get the value of two memory locations as one 16-bit word.
+readMem16 :: Monad m => Word16 -> MachineT m Word16
+readMem16 i = MachineT $ do
   machine <- S.get
   let low = fromIntegral $ memory machine A.! i
   let hgh = fromIntegral $ memory machine A.! (i+1)
   return $ low B..|. (hgh `B.shiftL` 8)
 
 -- | Write to a memory location.
-writeMem :: Monad m => Word16 -> Word8 -> MachineM m ()
-writeMem i val = MachineM $ S.modify $ \machine ->
+writeMem :: Monad m => Word16 -> Word8 -> MachineT m ()
+writeMem i val = MachineT $ S.modify $ \machine ->
   machine { memory = memory machine A.// [(i,val)] }
 
 -- | Get the values of the condition code registers.
-readNZP :: Monad m => MachineM m (Bool, Bool, Bool)
-readNZP = MachineM $ do
+readNZP :: Monad m => MachineT m (Bool, Bool, Bool)
+readNZP = MachineT $ do
   machine <- S.get
   return $ nzp machine
 
 -- | Set the condition codes based on a particular value.
-setNZP :: Monad m => Word16 -> MachineM m ()
-setNZP val = MachineM $ do
+setNZP :: Monad m => Word16 -> MachineT m ()
+setNZP val = MachineT $ do
   let n = (val B..&. 0x8000 == 0x8000)
   let z = (val == 0x0000)
   let p = (val B..&. 0x8000 == 0x0000 && val /= 0x0000)
@@ -87,24 +88,24 @@ setNZP val = MachineM $ do
     machine { nzp = (n, z, p) }
 
 -- | Is the machine halted?
-isHalted :: Monad m => MachineM m Bool
-isHalted = MachineM $ do
+isHalted :: Monad m => MachineT m Bool
+isHalted = MachineT $ do
   machine <- S.get
   return (halted machine)
 
 -- | Halt the machine.
-halt :: Monad m => MachineM m ()
-halt = MachineM $ S.modify $ \machine ->
+halt :: Monad m => MachineT m ()
+halt = MachineT $ S.modify $ \machine ->
   machine { halted = True }
 
 -- Increment the PC by 2.
-incPC :: Monad m => MachineM m ()
+incPC :: Monad m => MachineT m ()
 incPC = do
   curPC <- readPC
   writePC (curPC + 2)
 
 -- Add an arbitrary 16-bit value to the PC.
-addPC :: Monad m => Word16 -> MachineM m ()
+addPC :: Monad m => Word16 -> MachineT m ()
 addPC offset = do
   curPC <- readPC
   writePC (curPC + offset)
@@ -116,7 +117,7 @@ addPC offset = do
 -- values for everything.
 
 -- ADD (register variant)
-add_reg :: Monad m => Word8 -> Word8 -> Word8 -> MachineM m ()
+add_reg :: Monad m => Word8 -> Word8 -> Word8 -> MachineT m ()
 add_reg dr sr1 sr2 = do
   sr1_val <- readReg sr1
   sr2_val <- readReg sr2
@@ -126,7 +127,7 @@ add_reg dr sr1 sr2 = do
   incPC
 
 -- add (immediate variant)
-add_imm :: Monad m => Word8 -> Word8 -> Word16 -> MachineM m ()
+add_imm :: Monad m => Word8 -> Word8 -> Word16 -> MachineT m ()
 add_imm dr sr1 imm = do
   sr1_val <- readReg sr1
   let res = sr1_val + imm
@@ -135,7 +136,7 @@ add_imm dr sr1 imm = do
   incPC
 
 -- AND, register variant
-and_reg :: Monad m => Word8 -> Word8 -> Word8 -> MachineM m ()
+and_reg :: Monad m => Word8 -> Word8 -> Word8 -> MachineT m ()
 and_reg dr sr1 sr2 = do
   sr1_val <- readReg sr1
   sr2_val <- readReg sr2
@@ -145,7 +146,7 @@ and_reg dr sr1 sr2 = do
   incPC
 
 -- AND, immediate variant
-and_imm :: Monad m => Word8 -> Word8 -> Word16 -> MachineM m ()
+and_imm :: Monad m => Word8 -> Word8 -> Word16 -> MachineT m ()
 and_imm dr sr1 imm = do
   sr1_val <- readReg sr1
   let res = sr1_val B..&. imm
@@ -154,7 +155,7 @@ and_imm dr sr1 imm = do
   incPC
 
 -- BR, all variants
-br :: Monad m => Bool -> Bool -> Bool -> Word16 -> MachineM m ()
+br :: Monad m => Bool -> Bool -> Bool -> Word16 -> MachineT m ()
 br checkN checkZ checkP offset = do
   (n, z, p) <- readNZP
   let cond = (n && checkN) || (z && checkZ) || (p && checkP)
@@ -163,13 +164,13 @@ br checkN checkZ checkP offset = do
 
 -- JMP, all variants
 -- when baser == 7, this is considered a RET
-jmp :: Monad m => Word8 -> MachineM m ()
+jmp :: Monad m => Word8 -> MachineT m ()
 jmp baser = do
   baser_val <- readReg baser
   writePC baser_val
 
 -- JSR (JSR pc offset variant)
-jsr :: Monad m => Word16 -> MachineM m ()
+jsr :: Monad m => Word16 -> MachineT m ()
 jsr offset = do
   curPC <- readPC
   let pc' = curPC + 2 -- incremented PC
@@ -177,7 +178,7 @@ jsr offset = do
   addPC offset -- set the new PC
 
 -- JSRR (JSR register variant)
-jsrr :: Monad m => Word8 -> MachineM m ()
+jsrr :: Monad m => Word8 -> MachineT m ()
 jsrr baser = do
   baser_val <- readReg baser
   curPC <- readPC
@@ -186,7 +187,7 @@ jsrr baser = do
   writePC baser_val -- set the new PC
 
 -- LDB (all variants)
-ldb :: Monad m => Word8 -> Word8 -> Word16 -> MachineM m ()
+ldb :: Monad m => Word8 -> Word8 -> Word16 -> MachineT m ()
 ldb dr baser offset = do
   baser_val <- readReg baser
   let i = baser_val + offset
@@ -198,7 +199,7 @@ ldb dr baser offset = do
   incPC
 
 -- LDW (all variants)
-ldw :: Monad m => Word8 -> Word8 -> Word16 -> MachineM m ()
+ldw :: Monad m => Word8 -> Word8 -> Word16 -> MachineT m ()
 ldw dr baser offset = do
   baser_val <- readReg baser
   let i = baser_val + offset
@@ -209,7 +210,7 @@ ldw dr baser offset = do
   incPC
 
 -- LEA (all variants)
-lea :: Monad m => Word8 -> Word16 -> MachineM m ()
+lea :: Monad m => Word8 -> Word16 -> MachineT m ()
 lea dr offset = do
   curPC <- readPC
   let pc' = curPC + 2 -- incremented PC
@@ -219,17 +220,17 @@ lea dr offset = do
   incPC
 
 -- RET (all variants)
-ret :: Monad m => MachineM m ()
+ret :: Monad m => MachineT m ()
 ret = do
   r7_val <- readReg 7
   writePC r7_val
 
 -- RTI (unimplemented, currently halts machine)
-rti :: Monad m => MachineM m ()
+rti :: Monad m => MachineT m ()
 rti = halt
 
 -- LSHF (SHF left variant)
-lshf :: Monad m => Word8 -> Word8 -> Word8 -> MachineM m ()
+lshf :: Monad m => Word8 -> Word8 -> Word8 -> MachineT m ()
 lshf dr sr shf = do
   sr_val <- readReg sr
   let res = sr_val `B.shiftL` (fromIntegral $ shf B..&. 0x0f)
@@ -238,7 +239,7 @@ lshf dr sr shf = do
   incPC
 
 -- RSHFL (SHF right logical variant)
-rshfl :: Monad m => Word8 -> Word8 -> Word8 -> MachineM m ()
+rshfl :: Monad m => Word8 -> Word8 -> Word8 -> MachineT m ()
 rshfl dr sr shf = do
   sr_val <- readReg sr
   let res = (sr_val `B.shiftR` (fromIntegral $ shf B..&. 0x0f))
@@ -247,7 +248,7 @@ rshfl dr sr shf = do
   incPC
 
 -- RSHFA (SHF right arithmetic variant)
-rshfa :: Monad m => Word8 -> Word8 -> Word8 -> MachineM m ()
+rshfa :: Monad m => Word8 -> Word8 -> Word8 -> MachineT m ()
 rshfa dr sr shf = do
   sr_val <- readReg sr
   let res = (sr_val `ashiftR` (fromIntegral $ shf B..&. 0x0f))
@@ -256,7 +257,7 @@ rshfa dr sr shf = do
   incPC
 
 -- STB (all variants)
-stb :: Monad m => Word8 -> Word8 -> Word16 -> MachineM m ()
+stb :: Monad m => Word8 -> Word8 -> Word16 -> MachineT m ()
 stb sr baser offset = do
   sr_val    <- readReg sr
   baser_val <- readReg baser
@@ -265,7 +266,7 @@ stb sr baser offset = do
   incPC
 
 -- STW (all variants)
-stw :: Monad m => Word8 -> Word8 -> Word16 -> MachineM m ()
+stw :: Monad m => Word8 -> Word8 -> Word16 -> MachineT m ()
 stw sr baser offset = do
   sr_val    <- readReg sr
   baser_val <- readReg baser
@@ -275,11 +276,11 @@ stw sr baser offset = do
   incPC
 
 -- TRAP (currently halts machine)
-trap :: Monad m => Word16 -> MachineM m ()
+trap :: Monad m => Word16 -> MachineT m ()
 trap _ = halt
 
 -- XOR (register variant)
-xor_reg :: Monad m => Word8 -> Word8 -> Word8 -> MachineM m ()
+xor_reg :: Monad m => Word8 -> Word8 -> Word8 -> MachineT m ()
 xor_reg dr sr1 sr2 = do
   sr1_val <- readReg sr1
   sr2_val <- readReg sr2
@@ -289,7 +290,7 @@ xor_reg dr sr1 sr2 = do
   incPC
 
 -- XOR (immediate variant)
-xor_imm :: Monad m => Word8 -> Word8 -> Word16 -> MachineM m ()
+xor_imm :: Monad m => Word8 -> Word8 -> Word16 -> MachineT m ()
 xor_imm dr sr1 imm = do
   sr1_val <- readReg sr1
   let res = sr1_val `B.xor` imm
@@ -297,7 +298,7 @@ xor_imm dr sr1 imm = do
   setNZP res
   incPC
 
-stepMachineTillHalted :: Monad m => Int -> MachineM m ()
+stepMachineTillHalted :: Monad m => Int -> MachineT m ()
 stepMachineTillHalted n | n <= 0 = return ()
 stepMachineTillHalted n = do
   h <- isHalted
@@ -308,7 +309,7 @@ stepMachineTillHalted n = do
 -- FIXME: Need to report error conditions on illegal opcodes, unimplemented
 -- instructions, etc.
 -- | The step function
-stepMachine :: Monad m => MachineM m ()
+stepMachine :: Monad m => MachineT m ()
 stepMachine = do
   -- If the machine has halted, do nothing
   h <- isHalted
