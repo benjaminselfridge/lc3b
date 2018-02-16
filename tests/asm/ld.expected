@@ -1,0 +1,5 @@
+[ RegContains 1 0x1234
+, RegContains 2 0x34
+, RegContains 3 0x12
+, RegContains 4 0x0000
+]

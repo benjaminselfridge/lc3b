@@ -14,7 +14,7 @@ import qualified Data.Array as A
 import           Data.Word (Word8, Word16)
 import qualified Data.Bits as B
 
--- import Debug.Trace (traceM)
+import Debug.Trace (traceM)
 
 import LC3b.Machine
 import LC3b.Utils
@@ -320,8 +320,7 @@ stepMachine = do
   curPC <- readPC
   instr <- readMem16 curPC
 
-  -- curNZP   <- readNZP
-  -- traceM $ "Instruction: " ++ showHex16 instr ++ ", PC: " ++ showHex16 curPC ++ ", NZP: " ++ show curNZP
+  -- traceM $ "Instruction: " ++ showHex16 instr ++ ", PC: " ++ showHex16 curPC
 
   -- Get the opcode
   let opcode = instr `B.shiftR` 12 -- high 4 bits are opcode

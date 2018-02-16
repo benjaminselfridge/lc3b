@@ -77,4 +77,4 @@ mkTest fp = T.testCase fp $ do
             RegContains rid w -> do
               let rval = gprs m' ! rid
               when (rval /= w) $
-                error $ "r" ++ show rid ++ " is " ++ show rval ++ ", should be " ++ show w
+                error $ "r" ++ show rid ++ " is " ++ showHex16 rval ++ ", should be " ++ showHex16 w

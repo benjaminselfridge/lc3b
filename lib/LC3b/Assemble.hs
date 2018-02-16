@@ -623,10 +623,13 @@ assembleLine (Line (LineDataInstr opcode operands) ln lineStr la) =
     (LDW, [ OperandRegId dr
           , OperandRegId baser
           , OperandImm off6 ]) ->
-      let opBits    = placeBits 12 15 0x2
+      let opBits    = placeBits 12 15 0x6
           drBits    = placeBits 9 11 (fromIntegral dr)
           baserBits = placeBits 6 8 (fromIntegral baser)
-          offBits   = placeBits 0 5 (fromIntegral (off6 `shiftR` 1))
+          -- NOTE: We encode the offset directly, which means that during execution,
+          -- the value in the assembly code gets implicitly doubled. This matches the
+          -- ISA but is somewhat counterintuitive.
+          offBits   = placeBits 0 5 (fromIntegral off6)
       in return $ opBits .|. drBits .|. baserBits .|. offBits
     (LEA, [ OperandRegId dr
           , OperandImm addr ]) ->

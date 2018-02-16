@@ -1,2 +1,3 @@
 .stack-work/
 *.out
+*.DS_Store
