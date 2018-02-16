@@ -1,3 +1,4 @@
 [ RegContains 0 0x5100
 , RegContains 1 0x003
+, RegContains 2 0x003
 ]
