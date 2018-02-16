@@ -82,7 +82,7 @@ setNZP :: Monad m => Word16 -> MachineM m ()
 setNZP val = MachineM $ do
   let n = (val B..&. 0x8000 == 0x8000)
   let z = (val == 0x0000)
-  let p = (val B..&. 0x8000 == 0x0000)
+  let p = (val B..&. 0x8000 == 0x0000 && val /= 0x0000)
   S.modify $ \machine ->
     machine { nzp = (n, z, p) }
 
@@ -108,7 +108,7 @@ addPC :: Monad m => Word16 -> MachineM m ()
 addPC offset = do
   curPC <- readPC
   writePC (curPC + offset)
-  
+
 -- Transformations for each opcode.
 -- I'm abstracting a bit from the definitions of the instructions here. I'm not
 -- modeling the immediate expansion (sign extension of a k-bit immediate to 16 bits)
@@ -319,7 +319,8 @@ stepMachine = do
   curPC <- readPC
   instr <- readMem16 curPC
 
-  traceM $ "Instruction: " ++ showHex16 instr ++ ", PC: " ++ showHex16 curPC
+  -- curNZP   <- readNZP
+  -- traceM $ "Instruction: " ++ showHex16 instr ++ ", PC: " ++ showHex16 curPC ++ ", NZP: " ++ show curNZP
 
   -- Get the opcode
   let opcode = instr `B.shiftR` 12 -- high 4 bits are opcode

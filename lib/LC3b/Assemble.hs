@@ -14,6 +14,7 @@ module LC3b.Assemble
   , ParseException(..)
     -- * Functions
   , buildSymbolTable
+  , showSymbolTable
   , buildProgram
   , assembleProgram
   ) where
@@ -41,8 +42,6 @@ import           Text.Read (readMaybe)
 
 import LC3b.Utils
 
--- import Debug.Trace (traceM)
-
 ----------------------------------------
 -- Types
 
@@ -51,6 +50,9 @@ type ProgramText = [String]
 
 -- | Symbol table mapping labels to addresses in the program
 type SymbolTable = Map String Word16
+
+showSymbolTable :: SymbolTable -> String
+showSymbolTable st = show (showHex16 <$> st)
 
 -- | Parsed line of assembly code.
 data Line = Line { lineData :: LineData
@@ -424,8 +426,8 @@ pbWriteLineAddr la = lift $ S.modify $ \st -> st { pbsLineAddr = la }
 pbIncrLineAddr :: ProgramBuilder ()
 pbIncrLineAddr = lift $ S.modify $ \st -> st { pbsLineAddr = 2 + pbsLineAddr st }
 
--- | Get the next line of the program text, incrementing the line number and line
--- address. If the program text contains no more lines, throw an UnexpectedEOF
+-- | Get the next line of the program text, incrementing the line number but not the
+-- line address. If the program text contains no more lines, throw an UnexpectedEOF
 -- exception.
 pbGetLine :: ProgramBuilder String
 pbGetLine = do
@@ -435,7 +437,7 @@ pbGetLine = do
     (line : rst) -> do
       S.modify $ \pbsSt -> pbsSt { pbsLines = rst }
       pbIncrLineNum
-      pbIncrLineAddr
+--      pbIncrLineAddr
       return line
     [] -> E.throwE (UnexpectedEOF ln)
 
@@ -467,7 +469,9 @@ pbParseLine = do
       let eline = parseLine ln la st lineStr
       case eline of
         Left  e    -> E.throwE e
-        Right line -> lift $ RWS.tell [line]
+        Right line -> do
+          lift $ RWS.tell [line]
+          pbIncrLineAddr
 
 -- | Parse the entire program
 pbBuildProgram :: ProgramBuilder ()

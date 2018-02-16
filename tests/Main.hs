@@ -49,6 +49,7 @@ mkTest fp = T.testCase fp $ do
       asmTxt <- readFile fpAsm
       let progTxt = lines asmTxt
       let (symErr, symTable, ep) = buildSymbolTable progTxt
+      -- putStrLn (showSymbolTable symTable)
       let (parseErr, prog) = buildProgram symTable progTxt
       let eBytes = assembleProgram prog
       let outFileName = replaceExtension fpAsm ".out"

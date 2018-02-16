@@ -1,9 +1,10 @@
-[ RegContains 0 1
-, RegContains 1 -1
-, RegContains 2 0
-, RegContains 3 3
-, RegContains 4 10
-, RegContains 5 0
-, RegContains 6 11
-, RegContains 7 0
+[ RegContains 0 1,
+  RegContains 1 -1,
+  RegContains 2 0,
+  RegContains 3 9,
+  RegContains 4 10,
+  RegContains 5 0,
+  RegContains 6 11,
+  RegContains 7 0
 ]
+
