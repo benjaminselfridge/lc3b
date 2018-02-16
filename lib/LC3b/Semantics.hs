@@ -14,7 +14,7 @@ import qualified Data.Array as A
 import           Data.Word (Word8, Word16)
 import qualified Data.Bits as B
 
-import Debug.Trace (traceM)
+-- import Debug.Trace (traceM)
 
 import LC3b.Machine
 import LC3b.Utils
@@ -435,7 +435,7 @@ stepMachine = do
       -- LEA
       let dr = extract 9 11 instr
       let pcoffset9 = extract 0 8 instr
-      let offset = sext 9 pcoffset9
+      let offset = sext 9 pcoffset9 `B.shiftL` 1
       lea dr offset
     15 -> do
       -- TRAP

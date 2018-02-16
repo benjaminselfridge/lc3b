@@ -369,18 +369,37 @@ lpParseOperands = do
   str <- RWS.get
   sequence $ readOperand <$> words str
 
+lpParseImm :: Int -> Word16 -> String -> LineParser (Maybe Line)
+lpParseImm ln la lineStr = do
+  str <- RWS.get
+  case words str of
+    [ s ] | Just imm <- (readMaybe s :: Maybe Word16) -> do
+              return $ Just $ Line { lineData = LineDataLiteral imm
+                                   , lineNum  = ln
+                                   , lineText = lineStr
+                                   , lineAddr = la
+                                   }
+    _ -> return Nothing
+
 parseLine :: Int -> Word16 -> SymbolTable -> String -> Either ParseException Line
 parseLine ln la st lineStr = runLP ln st lineStr $ do
   lpDiscardLabel
   lpDiscardComment
-  opcode <- lpParseOpcode
-  operands <- lpParseOperands
-  return $ Line {
-    lineData = LineDataInstr opcode operands,
-    lineNum  = ln,
-    lineText = lineStr,
-    lineAddr = la
-    }
+
+  -- First, attempt to parse the line as an immediate value; if this fails, it should
+  -- be a valid line of assembly code
+  mImmLine <- lpParseImm ln la lineStr
+  case mImmLine of
+    Just l -> return l
+    Nothing -> do
+      opcode <- lpParseOpcode
+      operands <- lpParseOperands
+      return $ Line {
+        lineData = LineDataInstr opcode operands,
+        lineNum  = ln,
+        lineText = lineStr,
+        lineAddr = la
+        }
 
 -- | State monad for assembling the program
 type ProgramBuilder = ExceptT ParseException (RWS SymbolTable Program ProgramBuilderState)
@@ -610,10 +629,10 @@ assembleLine (Line (LineDataInstr opcode operands) ln lineStr la) =
           offBits   = placeBits 0 5 (fromIntegral (off6 `shiftR` 1))
       in return $ opBits .|. drBits .|. baserBits .|. offBits
     (LEA, [ OperandRegId dr
-          , OperandImm off9 ]) ->
+          , OperandImm addr ]) ->
       let opBits  = placeBits 12 15 0xE
           drBits  = placeBits 9 11 (fromIntegral dr)
-          offBits = placeBits 0 8 (fromIntegral off9)
+          offBits = placeBits 0 8 (fromIntegral ((addr - (la + 2)) `shiftR` 1))
       in return $ opBits .|. drBits .|. offBits
     (NOT, [ OperandRegId dr
           , OperandRegId sr ]) ->
@@ -690,8 +709,7 @@ assembleLine (Line (LineDataInstr opcode operands) ln lineStr la) =
           selBit  = placeBits 5  5  0x1
       in return $ opBits .|. drBits .|. sr1Bits .|. immBits .|. selBit
     _ -> Left (OperandTypeError ln lineStr)
-assembleLine (Line (LineDataLiteral _) _ _ _) =
-  Left (OtherException "line literals not implemented")
+assembleLine (Line (LineDataLiteral imm) _ _ _) = return imm
 
 -- | Assemble a parsed program into a bytestring.
 assembleProgram :: Program -> Either ParseException ByteString
