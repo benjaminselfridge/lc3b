@@ -51,7 +51,8 @@ mkWord16 hgh8 low8 = ((fromIntegral hgh8 :: Word16) `shiftL` 8) .|. fromIntegral
 showHex8 :: Word8 -> String
 showHex8 x = "0x" ++ showHex x ""
 
-showHex16 :: Word16 -> String
+-- | FIXME: Rename this
+showHex16 :: (Show a, Integral a) => a -> String
 showHex16 x = "0x" ++ showHex x ""
 
 firstWord :: String -> Maybe (String, String)
@@ -66,6 +67,12 @@ wordsToBS ws = BS.pack $ concat $ [ [low8B w, hgh8B w] | w <- ws ]
 
 fitsBits :: Integer -> Int -> Bool
 fitsBits word width =
+  if 0 <= word &&  word < (1 `shiftL` width)
+  then True
+  else False
+
+fitsBitsSigned :: Integer -> Int -> Bool
+fitsBitsSigned word width =
   let adjWord = word + (1 `shiftL` (width - 1))
   in if 0 <= adjWord &&  adjWord < (1 `shiftL` width)
      then True

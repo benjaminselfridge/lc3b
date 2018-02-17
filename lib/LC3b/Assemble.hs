@@ -31,6 +31,7 @@ import qualified Control.Monad.RWS as RWS
 import           Data.Bits ( (.&.)
                            , (.|.)
                            , shiftL
+                           , shiftR
                            , bit
                            )
 import           Data.ByteString (ByteString)
@@ -42,16 +43,14 @@ import           Text.Read (readMaybe)
 
 import LC3b.Utils
 
--- FIXME: New plan: parse immediates as full integers, unbounded width. Then,
--- determine whether the given integer is an appropriate for that operand in the
--- assembleLine function. For offsets and immediate arithmetic operands, we check
--- that the signed representation of the integer can fit in the given number of
--- bits. For shift amounts, do the same check for unsigned (and that it is
--- positive). This should enable us to pretty easily report useful errors (warnings?)
--- if the immediates are not appropriately sized or signed.
+-- FIXME: Some of the errors could be considered warnings instead, but it's probably
+-- more trouble than it's worth. I was thinking, if an operand is the wrong width or
+-- sign, we could just warn the user rather than fail. But failing is probably a fine
+-- thing to do since if you're writing an operand that is outside the expected range,
+-- you're probably doing something wrong.
 
--- I had a thought -- add a writer to all of this that basically accumulates a list
--- of warnings encountered. That would be cool.
+-- FIXME: Create a separate sign error. Right now if an operand is the wrong sign, we
+-- just throw an OperandWidthError, but we need to add an OperandSizeError too.
 
 ----------------------------------------
 -- Types
@@ -92,8 +91,9 @@ data Operand = OperandRegId RegId
 
 -- | A register identifier (values between 0 and 7)
 type RegId = Word8
--- | A 16-bit immediate value
-type Imm = Word16
+
+-- | An immediate value
+type Imm = Integer
 
 -- | We create one constructor for each assembly language opcode. Some of these are
 -- synonyms.
@@ -133,7 +133,7 @@ data ParseException = BadEntryPoint Int String
                     | InvalidOpcode Int String String
                     | InvalidOperand Int String String
                     | OperandTypeError Int String
-                    | OperandWidthError Int Word16 Int String
+                    | OperandWidthError Int Integer Int String
                     | UnknownSymbol Int String
                     | IllFormedLine Int String
                     | UnexpectedEOF Int
@@ -154,7 +154,7 @@ instance Show ParseException where
   show (OperandWidthError ln operand width line) =
     "  Operand width error at line " ++ show ln ++ ":\n" ++
     line ++ "\n" ++
-    "  " ++ showHex16 operand ++ " should be a " ++ show width ++ "-bit value"
+    "  " ++ show operand ++ " should be a " ++ show width ++ "-bit value"
   show (IllFormedLine ln line) =
     "  Ill-formed line at line " ++ show ln ++ ":\n" ++ line ++ "\n"
   show (UnknownSymbol ln label) =
@@ -374,9 +374,9 @@ readOperand str = do
     "R6" -> return $ OperandRegId 6
     "R7" -> return $ OperandRegId 7
     _ -> do
-      case (readMaybe str, M.lookup str st) of
-        (Just imm, _) -> return $ OperandImm imm
-        (_, Just imm) -> return $ OperandImm imm
+      case (readMaybe str :: Maybe Integer, M.lookup str st) of
+        (Just imm, _) -> return $ OperandImm (fromIntegral imm)
+        (_, Just imm) -> return $ OperandImm (fromIntegral imm)
         _ -> E.throwE (InvalidOperand ln str line)
 
 -- | Parse the operand list.
@@ -534,22 +534,23 @@ buildProgram st progLines =
 -- FIXME: we need to actually check the absolute value of the operand here to
 -- determine if the bit width is too small. We can't just check equality after
 -- masking.
-placeBits :: Int -> String -> Int -> Int -> Word16 -> Either ParseException Word16
-placeBits ln lineStr lo hi w = do
+placeBitsSigned :: Int -> String -> Int -> Int -> Integer -> Either ParseException Word16
+placeBitsSigned ln lineStr lo hi w = do
   let bits = hi - lo + 1
-  let w' = w .&. (bit bits - 1)
-  if (fromIntegral w) `fitsBits` bits
-    then return $ (w .&. (bit bits - 1)) `shiftL` lo
+  if w `fitsBitsSigned` bits
+    then return $ (fromIntegral w .&. (bit bits - 1)) `shiftL` lo
     else Left $ OperandWidthError ln w bits lineStr
 
-  -- show (OperandWidthError ln operand width line) =
-  --   "  Operand width error at line " ++ show ln ++ ":\n" ++
-  --   line ++ "\n" ++
-  --   "  " ++ showHex16 operand ++ " should be a " ++ show width ++ "-bit value"
-
+placeBits :: Int -> String -> Int -> Int -> Integer -> Either ParseException Word16
+placeBits ln lineStr lo hi w = do
+  let bits = hi - lo + 1
+  if w `fitsBits` bits
+    then return $ (fromIntegral w .&. (bit bits - 1)) `shiftL` lo
+    else Left $ OperandWidthError ln w bits lineStr
 
 assembleLine :: Line -> Either ParseException Word16
-assembleLine (Line (LineDataInstr opcode operands) ln lineStr la) =
+assembleLine (Line (LineDataInstr opcode operands) ln lineStr la) = do
+  let ila = fromIntegral la
   case (opcode, operands) of
     (ADD, [ OperandRegId dr
           , OperandRegId sr1
@@ -590,42 +591,42 @@ assembleLine (Line (LineDataInstr opcode operands) ln lineStr la) =
     (BR, [ OperandImm addr ]) -> do
       opBits  <- placeBits ln lineStr 12 15 0x0
       nzpBits <- placeBits ln lineStr 9 11 0x7
-      offBits <- placeBits ln lineStr 0 8 (fromIntegral ((addr - (la + 2)) `ashiftR` 1))
+      offBits <- placeBitsSigned ln lineStr 0 8 ((addr - (ila + 2)) `shiftR` 1)
       return $ opBits .|. nzpBits .|. offBits
     (BRn, [ OperandImm addr ]) -> do
       opBits  <- placeBits ln lineStr 12 15 0x0
       nzpBits <- placeBits ln lineStr 9 11 0x4
-      offBits <- placeBits ln lineStr 0 8 (fromIntegral ((addr - (la + 2)) `ashiftR` 1))
+      offBits <- placeBitsSigned ln lineStr 0 8 (fromIntegral ((addr - (ila + 2)) `shiftR` 1))
       return $ opBits .|. nzpBits .|. offBits
     (BRz, [ OperandImm addr ]) -> do
       opBits  <- placeBits ln lineStr 12 15 0x0
       nzpBits <- placeBits ln lineStr 9 11 0x2
-      offBits <- placeBits ln lineStr 0 8 (fromIntegral ((addr - (la + 2)) `ashiftR` 1))
+      offBits <- placeBitsSigned ln lineStr 0 8 (fromIntegral ((addr - (ila + 2)) `shiftR` 1))
       return $ opBits .|. nzpBits .|. offBits
     (BRp, [ OperandImm addr ]) -> do
       opBits  <- placeBits ln lineStr 12 15 0x0
       nzpBits <- placeBits ln lineStr 9 11 0x1
-      offBits <- placeBits ln lineStr 0 8 (fromIntegral ((addr - (la + 2)) `ashiftR` 1))
+      offBits <- placeBitsSigned ln lineStr 0 8 (fromIntegral ((addr - (ila + 2)) `shiftR` 1))
       return $ opBits .|. nzpBits .|. offBits
     (BRnz, [ OperandImm addr ]) -> do
       opBits  <- placeBits ln lineStr 12 15 0x0
       nzpBits <- placeBits ln lineStr 9 11 0x6
-      offBits <- placeBits ln lineStr 0 8 (fromIntegral ((addr - (la + 2)) `ashiftR` 1))
+      offBits <- placeBitsSigned ln lineStr 0 8 (fromIntegral ((addr - (ila + 2)) `shiftR` 1))
       return $ opBits .|. nzpBits .|. offBits
     (BRnp, [ OperandImm addr ]) -> do
       opBits  <- placeBits ln lineStr 12 15 0x0
       nzpBits <- placeBits ln lineStr 9 11 0x5
-      offBits <- placeBits ln lineStr 0 8 (fromIntegral ((addr - (la + 2)) `ashiftR` 1))
+      offBits <- placeBitsSigned ln lineStr 0 8 (fromIntegral ((addr - (ila + 2)) `shiftR` 1))
       return $ opBits .|. nzpBits .|. offBits
     (BRzp, [ OperandImm addr ]) -> do
       opBits  <- placeBits ln lineStr 12 15 0x0
       nzpBits <- placeBits ln lineStr 9 11 0x3
-      offBits <- placeBits ln lineStr 0 8 (fromIntegral ((addr - (la + 2)) `ashiftR` 1))
+      offBits <- placeBitsSigned ln lineStr 0 8 (fromIntegral ((addr - (ila + 2)) `shiftR` 1))
       return $ opBits .|. nzpBits .|. offBits
     (BRnzp, [ OperandImm addr ]) -> do
       opBits  <- placeBits ln lineStr 12 15 0x0
       nzpBits <- placeBits ln lineStr 9 11 0x7
-      offBits <- placeBits ln lineStr 0 8 (fromIntegral ((addr - (la + 2)) `ashiftR` 1))
+      offBits <- placeBitsSigned ln lineStr 0 8 (fromIntegral ((addr - (ila + 2)) `shiftR` 1))
       return $ opBits .|. nzpBits .|. offBits
     (JMP, [ OperandRegId baser ]) -> do
       opBits    <- placeBits ln lineStr 12 15 0xC
@@ -634,7 +635,7 @@ assembleLine (Line (LineDataInstr opcode operands) ln lineStr la) =
     (JSR, [ OperandImm off11 ]) -> do
       opBits  <- placeBits ln lineStr 12 15 0x4
       selBit  <- placeBits ln lineStr 11 11 0x1
-      offBits <- placeBits ln lineStr 0 10 (fromIntegral off11)
+      offBits <- placeBitsSigned ln lineStr 0 10 (fromIntegral off11)
       return $ opBits .|. selBit .|. offBits
     (JSRR, [ OperandRegId baser ]) -> do
       opBits    <- placeBits ln lineStr 12 15 0x4
@@ -647,7 +648,7 @@ assembleLine (Line (LineDataInstr opcode operands) ln lineStr la) =
       opBits    <- placeBits ln lineStr 12 15 0x2
       drBits    <- placeBits ln lineStr 9 11 (fromIntegral dr)
       baserBits <- placeBits ln lineStr 6 8 (fromIntegral baser)
-      offBits   <- placeBits ln lineStr 0 5 (fromIntegral off6)
+      offBits   <- placeBitsSigned ln lineStr 0 5 (fromIntegral off6)
       return $ opBits .|. drBits .|. baserBits .|. offBits
     (LDW, [ OperandRegId dr
           , OperandRegId baser
@@ -658,13 +659,13 @@ assembleLine (Line (LineDataInstr opcode operands) ln lineStr la) =
       -- NOTE: We encode the offset directly, which means that during execution,
       -- the value in the assembly code gets implicitly doubled. This matches the
        -- ISA but is somewhat counterintuitive.
-      offBits   <- placeBits ln lineStr 0 5 (fromIntegral off6)
+      offBits   <- placeBitsSigned ln lineStr 0 5 (fromIntegral off6)
       return $ opBits .|. drBits .|. baserBits .|. offBits
     (LEA, [ OperandRegId dr
           , OperandImm addr ]) -> do
       opBits  <- placeBits ln lineStr 12 15 0xE
       drBits  <- placeBits ln lineStr 9 11 (fromIntegral dr)
-      offBits <- placeBits ln lineStr 0 8 (fromIntegral ((addr - (la + 2)) `ashiftR` 1))
+      offBits <- placeBitsSigned ln lineStr 0 8 (fromIntegral ((addr - (ila + 2)) `shiftR` 1))
       return $ opBits .|. drBits .|. offBits
     (NOT, [ OperandRegId dr
           , OperandRegId sr ]) -> do
@@ -708,7 +709,7 @@ assembleLine (Line (LineDataInstr opcode operands) ln lineStr la) =
       opBits       <- placeBits ln lineStr 12 15 0x3
       srBits       <- placeBits ln lineStr 9  11 (fromIntegral sr)
       baserBits    <- placeBits ln lineStr 6 8 (fromIntegral baser)
-      boffset6Bits <- placeBits ln lineStr 0 5 (fromIntegral boffset6)
+      boffset6Bits <- placeBitsSigned ln lineStr 0 5 (fromIntegral boffset6)
       return $ opBits .|. srBits .|. baserBits .|. boffset6Bits
     (STW, [ OperandRegId sr
           , OperandRegId baser
@@ -716,7 +717,7 @@ assembleLine (Line (LineDataInstr opcode operands) ln lineStr la) =
       opBits      <- placeBits ln lineStr 12 15 0x3
       srBits      <- placeBits ln lineStr 9  11 (fromIntegral sr)
       baserBits   <- placeBits ln lineStr 6 8 (fromIntegral baser)
-      offset6Bits <- placeBits ln lineStr 0 5 (fromIntegral (offset6 `ashiftR` 1))
+      offset6Bits <- placeBitsSigned ln lineStr 0 5 (fromIntegral (offset6 `shiftR` 1))
       return $ opBits .|. srBits .|. baserBits .|. offset6Bits
     (TRAP, [ OperandImm trapvect8 ]) -> do
       opBits        <- placeBits ln lineStr 12 15 0xF
