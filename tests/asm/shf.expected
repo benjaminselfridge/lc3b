@@ -1,0 +1,5 @@
+[ RegContains 0 0xFFFF
+, RegContains 1 0xFFF0
+, RegContains 2 0x1FFE
+, RegContains 3 0xFFFF
+]

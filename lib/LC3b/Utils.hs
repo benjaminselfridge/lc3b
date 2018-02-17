@@ -63,3 +63,10 @@ firstWord str = do
 
 wordsToBS :: [Word16] -> ByteString
 wordsToBS ws = BS.pack $ concat $ [ [low8B w, hgh8B w] | w <- ws ]
+
+fitsBits :: Integer -> Int -> Bool
+fitsBits word width =
+  let adjWord = word + (1 `shiftL` (width - 1))
+  in if 0 <= adjWord &&  adjWord < (1 `shiftL` width)
+     then True
+     else False
