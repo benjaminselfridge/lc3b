@@ -11,7 +11,7 @@ LBRp:   XOR R1 R1 R1
         BRz LBRz
 
         ;; 6.1) test branch np.
-LBRnz2: ADD R3 R3 0x1a
+LBRnz2: ADD R3 R3 -6
         BRz DONE
         BRnp LBRnp1             ;0x3410
         
@@ -37,17 +37,17 @@ LBRnp1: ADD R4 R4 0xa
         BRnp LBRnp2
         
         ;; 5.1) test branch nz.
-LBRn:   ADD R2 R2 0x1f
+LBRn:   ADD R2 R2 -1
         BRp DONE
         BRnz LBRnz1             ;0x3430
 
         ;; 7.2) test branch zp
-LBRzp1: ADD R3 R4 0x1f
+LBRzp1: ADD R3 R4 -1
         BRn DONE
         BRzp LBRzp2
         
         ;; 4) test branch negative.
-LBRz:   ADD R1 R1 0x1f          ; R1 should be -1.
+LBRz:   ADD R1 R1 -1          ; R1 should be -1.
         BRp DONE
         BRz DONE
         BRn LBRn

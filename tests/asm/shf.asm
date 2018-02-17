@@ -1,6 +1,6 @@
         0x4500
 
-        ADD     R0      R0      0x1F
+        ADD     R0      R0      -0x1
         LSHF    R1      R0      4
         RSHFL   R2      R1      3
         RSHFA   R3      R1      4

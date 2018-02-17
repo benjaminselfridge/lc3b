@@ -52,6 +52,12 @@ import LC3b.Utils
 -- FIXME: Create a separate sign error. Right now if an operand is the wrong sign, we
 -- just throw an OperandWidthError, but we need to add an OperandSizeError too.
 
+-- FIXME: When we throw operand width errors, we also want to report to the user
+-- whether it's supposed an unsigned or signed operand.
+
+-- FIXME: Something slightly buggy going on with line number count. Seems to be off
+-- by one.
+
 ----------------------------------------
 -- Types
 
@@ -128,6 +134,7 @@ data Opcode = ADD
 -- | Internal representation for an assembly language program.
 type Program = [Line]
 
+-- FIXME: give field names to these for documentation purposes.
 -- | The type for assembler exceptions.
 data ParseException = BadEntryPoint Int String
                     | InvalidOpcode Int String String
@@ -567,7 +574,7 @@ assembleLine (Line (LineDataInstr opcode operands) ln lineStr la) = do
       opBits  <- placeBits ln lineStr 12 15 0x1
       drBits  <- placeBits ln lineStr 9  11 (fromIntegral dr)
       sr1Bits <- placeBits ln lineStr 6  8  (fromIntegral sr1)
-      immBits <- placeBits ln lineStr 0  4  (fromIntegral imm5)
+      immBits <- placeBitsSigned ln lineStr 0  4  (fromIntegral imm5)
       selBit  <- placeBits ln lineStr 5  5  0x1
       return $ opBits .|. drBits .|. sr1Bits .|. immBits .|. selBit
     (AND, [ OperandRegId dr
