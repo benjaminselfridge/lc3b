@@ -745,7 +745,7 @@ assembleLine (Line (LineDataInstr opcode operands) ln lineStr la) = do
       opBits  <- placeBits ln lineStr 12 15 0x9
       drBits  <- placeBits ln lineStr 9  11 (fromIntegral dr)
       sr1Bits <- placeBits ln lineStr 6  8  (fromIntegral sr1)
-      immBits <- placeBits ln lineStr 0  4  (fromIntegral imm5)
+      immBits <- placeBitsSigned ln lineStr 0  4  (fromIntegral imm5)
       selBit  <- placeBits ln lineStr 5  5  0x1
       return $ opBits .|. drBits .|. sr1Bits .|. immBits .|. selBit
     _ -> Left (OperandTypeError ln lineStr)
