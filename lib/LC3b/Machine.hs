@@ -26,26 +26,6 @@ data Machine s = Machine { pc     :: STRef s Word16
                            -- ^ for halting
                          }
 
-initMachine :: Word16 -> ByteString -> ST s (Machine s)
-initMachine entry _prog = do
-  initPC <- ST.newSTRef entry
-  initGPRS <- ST.newArray (0, 0xF) 0
-  initMem <- ST.newArray (0, 0xFFFF) 0
-  initNZP <- ST.newSTRef (False, True, False)
-  initHalted <- ST.newSTRef False
-  return $
-    Machine { pc = initPC
-              -- init pc to entry point
-            , gprs = initGPRS
-              -- init all GPRs to 0
-            , memory = initMem
-              -- init memory to contain program at specified entry point
-            , nzp = initNZP
-              -- init condition codes to Z
-            , halted = initHalted
-              -- init in running state
-            }
-
 -- showMachine :: Machine -> String
 -- showMachine m =
 --   "PC: " ++ showHex16 (pc m) ++ "\n" ++

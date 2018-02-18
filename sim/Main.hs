@@ -3,6 +3,7 @@ module Main where
 import qualified Data.ByteString as B
 import Control.Monad.Trans.State.Lazy
 import Control.Monad.Identity
+import Control.Monad.ST (ST)
 import Data.List (intercalate)
 import Data.Array ((!))
 import Numeric (showHex)
@@ -16,14 +17,14 @@ import System.IO ( IOMode(..)
                  , withFile
                  )
 
-import LC3b.IO
 import LC3b.Machine
 import LC3b.Semantics
 import LC3b.Utils
 
-bsInitMachine :: B.ByteString -> Either SimException Machine
+bsInitMachine :: B.ByteString -> Either SimException (ST s (Machine s))
 bsInitMachine bs = case B.unpack bs of
-  (epHgh8 : epLow8 : progBytes) -> return $ initMachine (mkWord16 epHgh8 epLow8) (B.pack progBytes)
+  (epHgh8 : epLow8 : progBytes) -> return $ do
+    return $ Machine {}
   _ -> Left IllFormedException
 
 data SimException = IllFormedException
@@ -47,5 +48,5 @@ main = do
           putStrLn "ill-formed binary"
           exitWith $ ExitFailure 1
         Right m -> do
-          let (_, m') = runMachine m $ stepMachineTillHalted 20
-          putStrLn $ showMachine m'
+          let (_, m') = undefined -- runMachine m $ stepMachineTillHalted 20
+          putStrLn $ undefined -- showMachine m'

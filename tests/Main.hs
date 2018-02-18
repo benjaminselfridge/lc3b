@@ -1,6 +1,7 @@
 module Main where
 
 import Control.Monad (forM_, when)
+import Control.Monad.ST (ST)
 import Data.Array ((!))
 import qualified  Data.ByteString as BS
 import Data.Word
@@ -31,9 +32,10 @@ main = do
 asmTests :: [FilePath] -> T.TestTree
 asmTests = T.testGroup "LC3b" . map mkTest
 
-bsInitMachine :: BS.ByteString -> Either SimException Machine
+bsInitMachine :: BS.ByteString -> Either SimException (ST s (Machine s))
 bsInitMachine bs = case BS.unpack bs of
-  (epHgh8 : epLow8 : progBytes) -> return $ initMachine (mkWord16 epHgh8 epLow8) (BS.pack progBytes)
+  (epHgh8 : epLow8 : progBytes) -> return $ do
+    return $ Machine {}
   _ -> Left IllFormedException
 
 data SimException = IllFormedException
@@ -72,9 +74,10 @@ mkTest fp = T.testCase fp $ do
         Left IllFormedException -> do
           error "ill-formed binary"
         Right m -> do
-          let (_, m') = runMachine m $ stepMachineTillHalted 100
+          let (_, m') = undefined -- runMachine m $ stepMachineTillHalted 100
           forM_ spec $ \req -> case req of
             RegContains rid w -> do
-              let rval = gprs m' ! rid
-              when (rval /= w) $
-                error $ "r" ++ show rid ++ " is " ++ showHex16 rval ++ ", should be " ++ showHex16 w
+              undefined
+              -- let rval = gprs m' ! rid
+              -- when (rval /= w) $
+              --   error $ "r" ++ show rid ++ " is " ++ showHex16 rval ++ ", should be " ++ showHex16 w
