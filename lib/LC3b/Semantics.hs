@@ -7,10 +7,15 @@
 module LC3b.Semantics where
 
 import           Control.Monad (when)
-import qualified Control.Monad.Identity as I
+import qualified Control.Monad.ST as ST
+import           Control.Monad.ST (ST)
+import           Control.Monad.Trans (lift)
 import qualified Control.Monad.Trans.State.Lazy as S
 import           Control.Monad.Trans.State.Lazy (StateT)
-import qualified Data.Array as A
+import qualified Data.Array.ST as ST
+import           Data.Array.ST (STArray)
+import qualified Data.STRef as ST
+import           Data.STRef (STRef)
 import           Data.Word (Word8, Word16)
 import qualified Data.Bits as B
 
@@ -19,39 +24,43 @@ import Debug.Trace (traceM)
 import LC3b.Machine
 import LC3b.Utils
 
--- | The LC3b state monad
-newtype MachineT m a = MachineT { runMachineT :: StateT Machine m a }
-  deriving (Functor,
-            Applicative,
-            Monad)
+-- FIXME: This is really a ReaderT, make the fix
 
-runMachine :: Machine -> MachineT I.Identity a -> (a, Machine)
-runMachine m action = I.runIdentity $ S.runStateT (runMachineT action) m
+-- | The LC3b machine state monad
+type MachineM s a = StateT (Machine s) (ST s) a
+
+runMachine :: Machine s -> MachineM s a -> ST s (a, Machine s)
+runMachine m action = S.runStateT action m
 
 -- Base state transformations.
 -- | Get the value of the PC.
-readPC :: Monad m => MachineT m Word16
-readPC = MachineT $ do
+readPC :: MachineM s Word16
+readPC = do
   machine <- S.get
-  return $ pc machine
+  curPC   <- lift $ ST.readSTRef (pc machine)
+  return curPC
 
 -- | Write to the PC.
-writePC :: Monad m => Word16 -> MachineT m ()
-writePC val = MachineT $ S.modify $ \machine ->
-  machine { pc = val }
+writePC :: Word16 -> MachineM s ()
+writePC newPC = do
+  machine <- S.get
+  lift $ ST.writeSTRef (pc machine) newPC
 
 -- | Get the value of a register.
 -- Guard against out-of-bounds accesses by just zeroing out all but the least 3
 -- significant bits.
-readReg :: Monad m => Word8 -> MachineT m Word16
-readReg i = MachineT $ do
+readReg :: Word8 -> MachineM s Word16
+readReg i = do
   machine <- S.get
-  return $ (gprs machine) A.! (i B..&. 0b111)
+  regVal  <- lift $ ST.readArray (gprs machine) i
+  return regVal
 
 -- | Write to a register.
-writeReg :: Monad m => Word8 -> Word16 -> MachineT m ()
-writeReg i val = MachineT $ S.modify $ \machine ->
-  machine { gprs = gprs machine A.// [(i B..&. 0b111,val)] }
+writeReg :: Word8 -> Word16 -> MachineM s ()
+writeReg i val = do
+  machine <- S.get
+  lift $ ST.writeArray (gprs machine) i val
+{-
 
 -- | Get the value of a memory location.
 readMem :: Monad m => Word16 -> MachineT m Word8
@@ -443,3 +452,5 @@ stepMachine = do
       trap trapvect8
     _ -> return ()
   return ()
+
+-}
