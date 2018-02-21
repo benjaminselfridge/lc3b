@@ -20,7 +20,7 @@ data Machine s = Machine { pc     :: STRef s Word16
                            -- ^ Eight general purpose registers
                          , memory :: STArray s Word16 Word8
                            -- ^ memory (16-bit address space, byte-addressed)
-                         , nzp :: STRef s (Bool, Bool, Bool)
+                         , nzp    :: STRef s (Bool, Bool, Bool)
                            -- ^ condition codes
                          , halted :: STRef s Bool
                            -- ^ for halting

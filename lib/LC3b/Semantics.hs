@@ -7,19 +7,18 @@
 module LC3b.Semantics where
 
 import           Control.Monad (when)
--- import qualified Control.Monad.ST as ST
+import qualified Control.Monad.ST as ST
 import           Control.Monad.ST (ST)
 import           Control.Monad.Trans (lift)
 import qualified Control.Monad.Trans.State.Lazy as S
 import           Control.Monad.Trans.State.Lazy (StateT)
 import qualified Data.Array.ST as ST
--- import           Data.Array.ST (STArray)
+import           Data.Array (Array)
 import qualified Data.STRef as ST
--- import           Data.STRef (STRef)
 import           Data.Word (Word8, Word16)
 import qualified Data.Bits as B
 
--- import Debug.Trace (traceM)
+import Debug.Trace (traceM)
 
 import LC3b.Machine
 import LC3b.Utils
@@ -29,8 +28,27 @@ import LC3b.Utils
 -- | The LC3b machine state monad
 type MachineM s a = StateT (Machine s) (ST s) a
 
-runMachine :: Machine s -> MachineM s a -> ST s (a, Machine s)
-runMachine m action = S.runStateT action m
+-- | Execute a MachineM action and return the resulting computation as immutable
+-- values. Note that we are still in the ST monad, so this function essentially runs
+-- a computation on some initial state and returns the resulting final state of the
+-- machine.
+execMachine :: MachineM s ()
+            -> Machine s
+            -> ST s ( Word16
+                    , Array Word8 Word16
+                    , Array Word16 Word8
+                    , (Bool, Bool, Bool)
+                    , Bool
+                    )
+execMachine action = S.evalStateT $ do
+  action
+  m'      <- S.get
+  pc'     <- lift $ ST.readSTRef  (pc m')
+  gprs'   <- lift $ ST.freeze (gprs m')
+  mem'    <- lift $ ST.freeze (memory m')
+  nzp'    <- lift $ ST.readSTRef  (nzp m')
+  halted' <- lift $ ST.readSTRef  (halted m')
+  return (pc', gprs', mem', nzp', halted')
 
 -- Base state transformations.
 -- | Get the value of the PC.

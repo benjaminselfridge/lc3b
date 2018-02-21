@@ -1,7 +1,9 @@
 module LC3b.Utils where
 
-import qualified Data.Array as A
-import           Data.Array (Array, Ix)
+import qualified Data.Array.ST as ST
+import           Data.Array.ST (STArray, Ix)
+import qualified Control.Monad.ST as ST
+import           Control.Monad.ST (ST)
 import           Data.Bits ( (.&.)
                            , (.|.)
                            , shiftL
@@ -15,10 +17,14 @@ import           Data.Char (isSpace)
 import           Data.Word (Word8, Word16)
 import           Numeric (showHex)
 
-writeBS :: (Enum i, Ix i) => i -> ByteString -> Array i Word8 -> Array i Word8
-writeBS startIx bs array = A.accum amap array bsAlist
-  where amap = flip const
-        bsAlist = zip [startIx..] (BS.unpack bs)
+-- FIXME: Do we really need a Num i constraint here?
+writeBS :: (Enum i, Num i, Ix i) => i -> ByteString -> STArray s i Word8 -> ST s (STArray s i Word8)
+writeBS ix bs array = do
+  case BS.null bs of
+    True -> return array
+    _    -> do
+      ST.writeArray array ix (BS.head bs)
+      writeBS (ix+1) (BS.tail bs) array
 
 -- | Sign-extend a k-bit value to 16 bits.
 sext :: Int -> Word16 -> Word16
