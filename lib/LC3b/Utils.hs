@@ -18,10 +18,10 @@ import           Data.Word (Word8, Word16)
 import           Numeric (showHex)
 
 -- FIXME: Do we really need a Num i constraint here?
-writeBS :: (Enum i, Num i, Ix i) => i -> ByteString -> STArray s i Word8 -> ST s (STArray s i Word8)
+writeBS :: (Enum i, Num i, Ix i) => i -> ByteString -> STArray s i Word8 -> ST s ()
 writeBS ix bs array = do
   case BS.null bs of
-    True -> return array
+    True -> return ()
     _    -> do
       ST.writeArray array ix (BS.head bs)
       writeBS (ix+1) (BS.tail bs) array
