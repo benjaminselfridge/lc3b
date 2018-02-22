@@ -35,10 +35,10 @@ main = do
 asmTests :: [FilePath] -> T.TestTree
 asmTests = T.testGroup "LC3b" . map mkTest
 
--- FIXME: We have to actually load the program into memory, which we aren't doing yet.
 bsInitMachine :: BS.ByteString -> ST s (Either SimException (Machine s))
 bsInitMachine bs = case BS.unpack bs of
   (epHgh8 : epLow8 : progBytes) -> do
+
     -- Initialize everything to 0
     pcRef     <- ST.newSTRef 0x0
     gprsRef   <- ST.newArray (0, 0xF) 0
@@ -110,7 +110,3 @@ mkTest fp = T.testCase fp $ do
               let rval = gprs' ! rid
               when (rval /= w) $
                 error $ "r" ++ show rid ++ " is " ++ showHex16 rval ++ ", should be " ++ showHex16 w
-
-      --     let  = runST $ do
-      --           m <- stm
-      --           execMachine (stepMachineTillHalted 100) m
