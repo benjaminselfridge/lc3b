@@ -1,3 +1,4 @@
+-- | Bit twiddling and miscellaneous functions
 module LC3b.Utils
   ( -- * Bit ops
     sext

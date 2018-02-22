@@ -1,15 +1,14 @@
--- | Assembler for LC-3b programs
--- We export three functions: buildSymbolTable, buildProgram, and assembleProgram.
+-- | Assembler for LC-3b programs.
 module LC3b.Assemble
   ( -- * Types
     ProgramText
   , SymbolTable
   , Line(..)
   , LineData(..)
+  , Opcode(..)
   , Operand(..)
   , RegId
   , Imm
-  , Opcode(..)
   , Program
   , ParseException(..)
     -- * Functions
@@ -17,7 +16,6 @@ module LC3b.Assemble
   , showSymbolTable
   , buildProgram
   , assembleProgram
-  , placeBits
   ) where
 
 import           Control.Monad (when)
@@ -67,6 +65,7 @@ type ProgramText = [String]
 -- | Symbol table mapping labels to addresses in the program
 type SymbolTable = Map String Word16
 
+-- | Pretty print the symbol table
 showSymbolTable :: SymbolTable -> String
 showSymbolTable st = show (prettyHex <$> st)
 

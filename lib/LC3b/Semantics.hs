@@ -1,9 +1,7 @@
--- The semantics for the LC-3b state machine
 {-# LANGUAGE BinaryLiterals #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
+-- | The semantics for the LC-3b state machine
 module LC3b.Semantics where
 
 import           Control.Monad (when)
@@ -28,6 +26,8 @@ import LC3b.Utils
 -- various state pointers point to is.
 type MachineM s a = ReaderT (Machine s) (ST s) a
 
+-- | The machine state. This state itself is immutable; it contains references to
+-- data in ST.
 data Machine s = Machine { pc     :: STRef s Word16
                            -- ^ The program counter
                          , gprs   :: STArray s Word8 Word16
@@ -143,25 +143,26 @@ halt = do
   machine <- R.ask
   lift $ ST.writeSTRef (halted machine) True
 
--- Increment the PC by 2.
+-- | Increment the PC by 2.
 incPC :: MachineM s ()
 incPC = do
   curPC <- readPC
   writePC (curPC + 2)
 
--- Add an arbitrary 16-bit value to the PC.
+-- | Add an arbitrary 16-bit value to the PC.
 addPC :: Word16 -> MachineM s ()
 addPC offset = do
   curPC <- readPC
   writePC (curPC + offset)
 
+----------------------------------------
 -- Transformations for each opcode.
 -- I'm abstracting a bit from the definitions of the instructions here. I'm not
 -- modeling the immediate expansion (sign extension of a k-bit immediate to 16 bits)
 -- or other low-level operations; these transformations assume we have fully known
 -- values for everything.
 
--- ADD (register variant)
+-- | ADD (register variant)
 add_reg :: Word8 -> Word8 -> Word8 -> MachineM s ()
 add_reg dr sr1 sr2 = do
   sr1_val <- readReg sr1
@@ -171,7 +172,7 @@ add_reg dr sr1 sr2 = do
   setNZP res
   incPC
 
--- add (immediate variant)
+-- | ADD (immediate variant)
 add_imm :: Word8 -> Word8 -> Word16 -> MachineM s ()
 add_imm dr sr1 imm = do
   sr1_val <- readReg sr1
@@ -180,7 +181,7 @@ add_imm dr sr1 imm = do
   setNZP res
   incPC
 
--- AND, register variant
+-- | AND, register variant
 and_reg :: Word8 -> Word8 -> Word8 -> MachineM s ()
 and_reg dr sr1 sr2 = do
   sr1_val <- readReg sr1
@@ -190,7 +191,7 @@ and_reg dr sr1 sr2 = do
   setNZP res
   incPC
 
--- AND, immediate variant
+-- | AND, immediate variant
 and_imm :: Word8 -> Word8 -> Word16 -> MachineM s ()
 and_imm dr sr1 imm = do
   sr1_val <- readReg sr1
@@ -199,7 +200,7 @@ and_imm dr sr1 imm = do
   setNZP res
   incPC
 
--- BR, all variants
+-- | BR, all variants
 br :: Bool -> Bool -> Bool -> Word16 -> MachineM s ()
 br checkN checkZ checkP offset = do
   (n, z, p) <- readNZP
@@ -207,14 +208,13 @@ br checkN checkZ checkP offset = do
   incPC
   when cond (addPC offset)
 
--- JMP, all variants
--- when baser == 7, this is considered a RET
+-- | JMP, all variants
 jmp :: Word8 -> MachineM s ()
 jmp baser = do
   baser_val <- readReg baser
   writePC baser_val
 
--- JSR (JSR pc offset variant)
+-- | JSR (JSR pc offset variant)
 jsr :: Word16 -> MachineM s ()
 jsr offset = do
   curPC <- readPC
@@ -222,7 +222,7 @@ jsr offset = do
   writeReg 7 pc' -- write the incremented PC to R7 for returning
   addPC offset -- set the new PC
 
--- JSRR (JSR register variant)
+-- | JSRR (JSR register variant)
 jsrr :: Word8 -> MachineM s ()
 jsrr baser = do
   baser_val <- readReg baser
@@ -231,7 +231,7 @@ jsrr baser = do
   writeReg 7 pc' -- write the incremented PC to R7 for returning
   writePC baser_val -- set the new PC
 
--- LDB (all variants)
+-- | LDB (all variants)
 ldb :: Word8 -> Word8 -> Word16 -> MachineM s ()
 ldb dr baser offset = do
   baser_val <- readReg baser
@@ -243,7 +243,7 @@ ldb dr baser offset = do
   setNZP res
   incPC
 
--- LDW (all variants)
+-- | LDW (all variants)
 ldw :: Word8 -> Word8 -> Word16 -> MachineM s ()
 ldw dr baser offset = do
   baser_val <- readReg baser
@@ -254,7 +254,7 @@ ldw dr baser offset = do
   setNZP res
   incPC
 
--- LEA (all variants)
+-- | LEA (all variants)
 lea :: Word8 -> Word16 -> MachineM s ()
 lea dr offset = do
   curPC <- readPC
@@ -264,17 +264,17 @@ lea dr offset = do
   -- don't set condition codes
   incPC
 
--- RET (all variants)
+-- | RET (all variants)
 ret :: MachineM s ()
 ret = do
   r7_val <- readReg 7
   writePC r7_val
 
--- RTI (unimplemented, currently halts machine)
+-- | RTI (unimplemented, currently halts machine)
 rti :: MachineM s ()
 rti = halt
 
--- LSHF (SHF left variant)
+-- | LSHF (SHF left variant)
 lshf :: Word8 -> Word8 -> Word8 -> MachineM s ()
 lshf dr sr shf = do
   sr_val <- readReg sr
@@ -283,7 +283,7 @@ lshf dr sr shf = do
   setNZP res
   incPC
 
--- RSHFL (SHF right logical variant)
+-- | RSHFL (SHF right logical variant)
 rshfl :: Word8 -> Word8 -> Word8 -> MachineM s ()
 rshfl dr sr shf = do
   sr_val <- readReg sr
@@ -292,7 +292,7 @@ rshfl dr sr shf = do
   setNZP res
   incPC
 
--- RSHFA (SHF right arithmetic variant)
+-- | RSHFA (SHF right arithmetic variant)
 rshfa :: Word8 -> Word8 -> Word8 -> MachineM s ()
 rshfa dr sr shf = do
   sr_val <- readReg sr
@@ -301,7 +301,7 @@ rshfa dr sr shf = do
   setNZP res
   incPC
 
--- STB (all variants)
+-- | STB (all variants)
 stb :: Word8 -> Word8 -> Word16 -> MachineM s ()
 stb sr baser offset = do
   sr_val    <- readReg sr
@@ -310,7 +310,7 @@ stb sr baser offset = do
   writeMem addr (low8B sr_val)
   incPC
 
--- STW (all variants)
+-- | STW (all variants)
 stw :: Word8 -> Word8 -> Word16 -> MachineM s ()
 stw sr baser offset = do
   sr_val    <- readReg sr
@@ -320,11 +320,12 @@ stw sr baser offset = do
   writeMem addr (hgh8B sr_val) -- write higher byte
   incPC
 
--- TRAP (currently halts machine)
+-- | TRAP
+-- currently halts machine.
 trap :: Word16 -> MachineM s ()
 trap _ = halt
 
--- XOR (register variant)
+-- | XOR (register variant)
 xor_reg :: Word8 -> Word8 -> Word8 -> MachineM s ()
 xor_reg dr sr1 sr2 = do
   sr1_val <- readReg sr1
@@ -334,7 +335,7 @@ xor_reg dr sr1 sr2 = do
   setNZP res
   incPC
 
--- XOR (immediate variant)
+-- | XOR (immediate variant)
 xor_imm :: Word8 -> Word8 -> Word16 -> MachineM s ()
 xor_imm dr sr1 imm = do
   sr1_val <- readReg sr1
@@ -343,17 +344,9 @@ xor_imm dr sr1 imm = do
   setNZP res
   incPC
 
-stepMachineTillHalted :: Int -> MachineM s ()
-stepMachineTillHalted n | n <= 0 = return ()
-stepMachineTillHalted n = do
-  h <- isHalted
-  when (not h) $ do
-    stepMachine
-    stepMachineTillHalted (n-1)
-
 -- FIXME: Need to report error conditions on illegal opcodes, unimplemented
 -- instructions, etc.
--- | The step function
+-- | Execute a single instruction
 stepMachine :: MachineM s ()
 stepMachine = do
   -- If the machine has halted, do nothing
@@ -365,12 +358,10 @@ stepMachine = do
   curPC <- readPC
   instr <- readMem16 curPC
 
-  -- traceM $ "Instruction: " ++ showHex16 instr ++ ", PC: " ++ showHex16 curPC
-
-  -- Get the opcode
+  -- Get the opcode bits
   let opcode = instr `B.shiftR` 12 -- high 4 bits are opcode
 
-  -- Case over the opcode to invoke the currect state handler
+  -- Case over the opcode to invoke the correct state handler
   case opcode of
     0  -> do
       -- BR
@@ -489,3 +480,11 @@ stepMachine = do
     _ -> return ()
   return ()
 
+-- | Run the machine for n instructions, stop early if it halts
+stepMachineTillHalted :: Int -> MachineM s ()
+stepMachineTillHalted n | n <= 0 = return ()
+stepMachineTillHalted n = do
+  h <- isHalted
+  when (not h) $ do
+    stepMachine
+    stepMachineTillHalted (n-1)
