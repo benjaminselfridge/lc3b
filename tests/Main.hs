@@ -15,7 +15,6 @@ import qualified Test.Tasty as T
 import qualified Test.Tasty.HUnit as T
 
 import LC3b.Assemble
-import LC3b.Machine
 import LC3b.Semantics
 import LC3b.Utils
 
@@ -75,7 +74,6 @@ mkTest fp = T.testCase fp $ do
       asmTxt <- readFile fpAsm
       let progTxt = lines asmTxt
       let (symErr, symTable, ep) = buildSymbolTable progTxt
-      -- putStrLn (showSymbolTable symTable)
       let (parseErr, prog) = buildProgram symTable progTxt
       let eBytes = assembleProgram prog
       let outFileName = replaceExtension fpAsm ".out"
@@ -93,6 +91,8 @@ mkTest fp = T.testCase fp $ do
 
       -- We've written the binary
       progBytes <- BS.readFile outFileName
+
+      -- Execute the program for 100 steps
       let eMachine = runST $ do
             em <- bsInitMachine progBytes
             case em of
@@ -100,13 +100,13 @@ mkTest fp = T.testCase fp $ do
               Right m -> do
                 res <- execMachine (stepMachineTillHalted 100) m
                 return (Right res)
+
       case eMachine of
         Left IllFormedException -> do
           error "ill-formed binary"
-        Right (pc', gprs', _memory', _nzp', _halted') -> do
-          -- putStrLn $ "Final pc: " ++ show pc'
+        Right (_pc', gprs', _memory', _nzp', _halted') -> do
           forM_ spec $ \req -> case req of
             RegContains rid w -> do
               let rval = gprs' ! rid
               when (rval /= w) $
-                error $ "r" ++ show rid ++ " is " ++ showHex16 rval ++ ", should be " ++ showHex16 w
+                error $ "r" ++ show rid ++ " is " ++ prettyHex rval ++ ", should be " ++ prettyHex w

@@ -17,14 +17,15 @@ import System.IO ( IOMode(..)
                  , withFile
                  )
 
-import LC3b.Machine
 import LC3b.Semantics
 import LC3b.Utils
+
+-- FIXME: This all needs to be fixed, it is broken.
 
 bsInitMachine :: B.ByteString -> Either SimException (ST s (Machine s))
 bsInitMachine bs = case B.unpack bs of
   (epHgh8 : epLow8 : progBytes) -> return $ do
-    return $ Machine {}
+    return $ undefined
   _ -> Left IllFormedException
 
 data SimException = IllFormedException

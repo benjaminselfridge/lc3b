@@ -7,26 +7,38 @@
 module LC3b.Semantics where
 
 import           Control.Monad (when)
-import qualified Control.Monad.ST as ST
+-- import qualified Control.Monad.ST as ST
 import           Control.Monad.ST (ST)
 import           Control.Monad.Trans (lift)
-import qualified Control.Monad.Trans.State.Lazy as S
-import           Control.Monad.Trans.State.Lazy (StateT)
+import qualified Control.Monad.Trans.Reader as R
+import           Control.Monad.Trans.Reader (ReaderT)
 import qualified Data.Array.ST as ST
+import           Data.Array.ST (STArray)
 import           Data.Array (Array)
 import qualified Data.STRef as ST
+import           Data.STRef (STRef)
 import           Data.Word (Word8, Word16)
 import qualified Data.Bits as B
 
-import Debug.Trace (traceM)
-
-import LC3b.Machine
 import LC3b.Utils
 
--- FIXME: This is really a ReaderT, make the fix
+-- | The LC3b machine monad
+-- We represent the machine state as a bundle of STRefs/STArrays. Since these are
+-- essentially pointers, the state itself is not mutable; the ST stuff that the
+-- various state pointers point to is.
+type MachineM s a = ReaderT (Machine s) (ST s) a
 
--- | The LC3b machine state monad
-type MachineM s a = StateT (Machine s) (ST s) a
+data Machine s = Machine { pc     :: STRef s Word16
+                           -- ^ The program counter
+                         , gprs   :: STArray s Word8 Word16
+                           -- ^ Eight general purpose registers
+                         , memory :: STArray s Word16 Word8
+                           -- ^ memory (16-bit address space, byte-addressed)
+                         , nzp    :: STRef s (Bool, Bool, Bool)
+                           -- ^ condition codes
+                         , halted :: STRef s Bool
+                           -- ^ for halting
+                         }
 
 -- | Execute a MachineM action and return the resulting computation as immutable
 -- values. Note that we are still in the ST monad, so this function essentially runs
@@ -40,9 +52,9 @@ execMachine :: MachineM s ()
                     , (Bool, Bool, Bool)
                     , Bool
                     )
-execMachine action = S.evalStateT $ do
+execMachine action = R.runReaderT $ do
   action
-  m'      <- S.get
+  m'      <- R.ask
   pc'     <- lift $ ST.readSTRef  (pc m')
   gprs'   <- lift $ ST.freeze (gprs m')
   mem'    <- lift $ ST.freeze (memory m')
@@ -50,18 +62,20 @@ execMachine action = S.evalStateT $ do
   halted' <- lift $ ST.readSTRef  (halted m')
   return (pc', gprs', mem', nzp', halted')
 
+----------------------------------------
 -- Base state transformations.
+
 -- | Get the value of the PC.
 readPC :: MachineM s Word16
 readPC = do
-  machine <- S.get
+  machine <- R.ask
   curPC   <- lift $ ST.readSTRef (pc machine)
   return curPC
 
 -- | Write to the PC.
 writePC :: Word16 -> MachineM s ()
 writePC newPC = do
-  machine <- S.get
+  machine <- R.ask
   lift $ ST.writeSTRef (pc machine) newPC
 
 -- | Get the value of a register.
@@ -69,27 +83,27 @@ writePC newPC = do
 -- significant bits.
 readReg :: Word8 -> MachineM s Word16
 readReg i = do
-  machine <- S.get
+  machine <- R.ask
   regVal  <- lift $ ST.readArray (gprs machine) i
   return regVal
 
 -- | Write to a register.
 writeReg :: Word8 -> Word16 -> MachineM s ()
 writeReg i val = do
-  machine <- S.get
+  machine <- R.ask
   lift $ ST.writeArray (gprs machine) i val
 
 -- | Get the value of a memory location.
 readMem :: Word16 -> MachineM s Word8
 readMem i = do
-  machine <- S.get
+  machine <- R.ask
   memVal  <- lift $ ST.readArray (memory machine) i
   return memVal
 
 -- | Get the value of two memory locations as one 16-bit word.
 readMem16 :: Word16 -> MachineM s Word16
 readMem16 i = do
-  machine <- S.get
+  machine <- R.ask
   memLow  <- lift $ ST.readArray (memory machine) i
   memHgh  <- lift $ ST.readArray (memory machine) (i+1)
   return $ fromIntegral memLow B..|. (fromIntegral memHgh `B.shiftL` 8)
@@ -97,20 +111,20 @@ readMem16 i = do
 -- | Write to a memory location.
 writeMem ::  Word16 -> Word8 -> MachineM s ()
 writeMem i val = do
-  machine <- S.get
+  machine <- R.ask
   lift $ ST.writeArray (memory machine) i val
 
 -- | Get the values of the condition code registers.
 readNZP :: MachineM s (Bool, Bool, Bool)
 readNZP = do
-  machine <- S.get
+  machine <- R.ask
   curNZP  <- lift $ ST.readSTRef (nzp machine)
   return curNZP
 
 -- | Set the condition codes based on a particular value.
 setNZP :: Word16 -> MachineM s ()
 setNZP val = do
-  machine <- S.get
+  machine <- R.ask
   lift $ ST.writeSTRef (nzp machine) (n, z, p)
   where n = (val B..&. 0x8000 == 0x8000)
         z = (val == 0x0000)
@@ -119,14 +133,14 @@ setNZP val = do
 -- | Is the machine halted?
 isHalted :: MachineM s Bool
 isHalted = do
-  machine <- S.get
+  machine <- R.ask
   curHalted <- lift $ ST.readSTRef (halted machine)
   return curHalted
 
 -- | Halt the machine.
 halt :: MachineM s ()
 halt = do
-  machine <- S.get
+  machine <- R.ask
   lift $ ST.writeSTRef (halted machine) True
 
 -- Increment the PC by 2.

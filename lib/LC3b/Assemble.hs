@@ -68,7 +68,7 @@ type ProgramText = [String]
 type SymbolTable = Map String Word16
 
 showSymbolTable :: SymbolTable -> String
-showSymbolTable st = show (showHex16 <$> st)
+showSymbolTable st = show (prettyHex <$> st)
 
 -- | Parsed line of assembly code.
 data Line = Line { lineData :: LineData
@@ -444,7 +444,7 @@ runPB pbSt st pb = RWS.evalRWS (E.runExceptT pb) st pbSt
 
 -- | Set up initial state for the ProgramBuilder.
 pbsInit :: ProgramText -> ProgramBuilderState
-pbsInit progLines = ProgramBuilderState 0x0 1 progLines
+pbsInit progLines = ProgramBuilderState 1 0x1 progLines
 
 -- Basic functions on ProgramBuilder.
 
