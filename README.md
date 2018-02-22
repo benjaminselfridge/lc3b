@@ -60,8 +60,6 @@ sim/Main.hs code yourself.
   top-level test/ directory should give you as much information as you need to
   write your own LC-3b programs that are compatible with the tools provided
   here.
-- The simulation code (in lib/LC3b/Semantics.hs) uses the Haskell Array type,
-  which is immutable; presumably, every time this code writes to the global
-  state, entirely new copies of the register file and memory are created. At
-  some point I plan on refactoring this code to use ST as the underlying monad
-  so that we can do all that stuff in-place.
+- I recently reworked the code to do the array stuff with mutable STArray's. As
+  a result, a lot of stuff needs to be cleaned up. The test suite works fine but
+  the executables don't build yet.
