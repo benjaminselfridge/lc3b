@@ -5,7 +5,6 @@
 module LC3b.Semantics where
 
 import           Control.Monad (when)
--- import qualified Control.Monad.ST as ST
 import           Control.Monad.ST (ST)
 import           Control.Monad.Trans (lift)
 import qualified Control.Monad.Trans.Reader as R
@@ -63,7 +62,7 @@ execMachine action = R.runReaderT $ do
   return (pc', gprs', mem', nzp', halted')
 
 ----------------------------------------
--- Base state transformations.
+-- Low-level state transformations.
 
 -- | Get the value of the PC.
 readPC :: MachineM s Word16

@@ -172,7 +172,8 @@ instance Show ParseException where
 
 
 ----------------------------------------
--- Symbol table builder
+-- Phase 1: Build symbol table
+
 -- To build the symbol table, we process the program text line by line, incrementing
 -- the PC for each nonempty line we encounter. When we see a label, we just add a
 -- (String, Word8) pair to the symbol table we are building.
@@ -314,7 +315,7 @@ buildSymbolTable progLines =
     Left  e' -> (Just e', stbsSymbolTable final_st, stbsEntryPoint final_st)
 
 ----------------------------------------
--- Parsing
+-- Phase 2a: Parsing individual lines of assembly
 
 -- | Simple parser monad for a line of assembly code. Needs an environment including
 -- the current line number and the entire original string (for error messages) as
@@ -423,7 +424,14 @@ parseLine ln la st lineStr = runLP ln st lineStr $ do
         lineAddr = la
         }
 
--- | State monad for assembling the program
+----------------------------------------
+-- Phase 2b: Parsing an entire assembly program, line by line, into a Program (list
+-- of Lines)
+
+-- | State monad for assembling the program.
+-- To build the program, we need an environment containing the symbol table and a
+-- mutable state tracking where we are in the program and all of the remaining text
+-- to be parsed. We output a program.
 type ProgramBuilder = ExceptT ParseException (RWS SymbolTable Program ProgramBuilderState)
 
 -- | State for the program builder monad
@@ -444,8 +452,6 @@ runPB pbSt st pb = RWS.evalRWS (E.runExceptT pb) st pbSt
 -- | Set up initial state for the ProgramBuilder.
 pbsInit :: ProgramText -> ProgramBuilderState
 pbsInit progLines = ProgramBuilderState 1 0x1 progLines
-
--- Basic functions on ProgramBuilder.
 
 -- | Get the current program line number
 pbReadLineNum :: ProgramBuilder Int
@@ -468,8 +474,9 @@ pbIncrLineAddr :: ProgramBuilder ()
 pbIncrLineAddr = lift $ S.modify $ \st -> st { pbsLineAddr = 2 + pbsLineAddr st }
 
 -- | Get the next line of the program text, incrementing the line number but not the
--- line address. If the program text contains no more lines, throw an UnexpectedEOF
--- exception.
+-- line address (since there is a possibility that the line was blank or only
+-- contained a comment).. If the program text contains no more lines, throw an
+-- UnexpectedEOF exception.
 pbGetLine :: ProgramBuilder String
 pbGetLine = do
   st <- lift S.get
@@ -478,7 +485,6 @@ pbGetLine = do
     (line : rst) -> do
       S.modify $ \pbsSt -> pbsSt { pbsLines = rst }
       pbIncrLineNum
---      pbIncrLineAddr
       return line
     [] -> E.throwE (UnexpectedEOF ln)
 

@@ -54,12 +54,6 @@ sim/Main.hs code yourself.
 
 ## Random notes (mainly for myself)
 
-- The assembly language I use is slightly different from the one in the
-  book. It's sort of hand-rolled in order to make parsing as easy as possible. I
-  haven't written down any kind of spec for it, but the examples under the
-  top-level test/ directory should give you as much information as you need to
-  write your own LC-3b programs that are compatible with the tools provided
-  here.
-- I recently reworked the code to do the array stuff with mutable STArray's. As
-  a result, a lot of stuff needs to be cleaned up. The test suite works fine but
-  the executables don't build yet.
+- TODO: Enhance simulator to accept multiple object files. Use the first one as
+  the program (so the PC gets set to the entry point in that file). The rest of
+  the object files just get loaded into the memory as data files.
