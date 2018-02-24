@@ -12,6 +12,7 @@ import           Control.Monad.Trans.Reader (ReaderT)
 import qualified Data.Array.ST as ST
 import           Data.Array.ST (STArray)
 import           Data.Array (Array)
+import qualified Data.ByteString as BS
 import qualified Data.STRef as ST
 import           Data.STRef (STRef)
 import           Data.Word (Word8, Word16)
@@ -38,6 +39,54 @@ data Machine s = Machine { pc     :: STRef s Word16
                          , halted :: STRef s Bool
                            -- ^ for halting
                          }
+
+data SimException = IllFormedException
+  deriving Show
+
+-- | Create an initial machine state with no program loaded
+initMachine :: ST s (Machine s)
+initMachine = do
+  -- Initialize everything to 0
+  pcRef     <- ST.newSTRef 0x0
+  gprsRef   <- ST.newArray (0, 0xF) 0
+  memRef    <- ST.newArray (0, 0xFFFF) 0
+  nzpRef    <- ST.newSTRef (False, True, False)
+  haltedRef <- ST.newSTRef False
+
+  return $
+    Machine { pc     = pcRef
+            , gprs   = gprsRef
+            , memory = memRef
+            , nzp    = nzpRef
+            , halted = haltedRef
+            }
+
+bsInitMachine :: BS.ByteString -> ST s (Either SimException (Machine s))
+bsInitMachine bs = case BS.unpack bs of
+  (epHgh8 : epLow8 : progBytes) -> do
+
+    -- Initialize everything to 0
+    pcRef     <- ST.newSTRef 0x0
+    gprsRef   <- ST.newArray (0, 0xF) 0
+    memRef    <- ST.newArray (0, 0xFFFF) 0
+    nzpRef    <- ST.newSTRef (False, True, False)
+    haltedRef <- ST.newSTRef False
+
+    -- set the initial PC
+    let ep = (fromIntegral epHgh8 `B.shiftL` 8) B..|. fromIntegral epLow8
+    ST.writeSTRef pcRef ep
+
+    -- write the bytestring to the memory
+    writeBS ep (BS.pack progBytes) memRef
+
+    return $ return $
+      Machine { pc     = pcRef
+              , gprs   = gprsRef
+              , memory = memRef
+              , nzp    = nzpRef
+              , halted = haltedRef
+              }
+  _ -> return $ Left IllFormedException
 
 -- | Execute a MachineM action and return the resulting computation as immutable
 -- values. Note that we are still in the ST monad, so this function essentially runs

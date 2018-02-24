@@ -57,3 +57,4 @@ sim/Main.hs code yourself.
 - TODO: Enhance simulator to accept multiple object files. Use the first one as
   the program (so the PC gets set to the entry point in that file). The rest of
   the object files just get loaded into the memory as data files.
+- TODO: Make a disassembler tool

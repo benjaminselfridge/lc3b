@@ -1,11 +1,8 @@
 module Main where
 
 import Control.Monad (forM_, when)
-import Control.Monad.ST (ST, runST)
-import qualified Data.STRef as ST
-import qualified Data.Array.ST as ST
+import Control.Monad.ST (runST)
 import Data.Array ((!))
-import Data.Bits (shiftL, (.|.))
 import qualified  Data.ByteString as BS
 import Data.Word
 import System.FilePath.Glob ( namesMatching )
@@ -33,36 +30,6 @@ main = do
 
 asmTests :: [FilePath] -> T.TestTree
 asmTests = T.testGroup "LC3b" . map mkTest
-
-bsInitMachine :: BS.ByteString -> ST s (Either SimException (Machine s))
-bsInitMachine bs = case BS.unpack bs of
-  (epHgh8 : epLow8 : progBytes) -> do
-
-    -- Initialize everything to 0
-    pcRef     <- ST.newSTRef 0x0
-    gprsRef   <- ST.newArray (0, 0xF) 0
-    memRef    <- ST.newArray (0, 0xFFFF) 0
-    nzpRef    <- ST.newSTRef (False, True, False)
-    haltedRef <- ST.newSTRef False
-
-    -- set the initial PC
-    let ep = (fromIntegral epHgh8 `shiftL` 8) .|. fromIntegral epLow8
-    ST.writeSTRef pcRef ep
-
-    -- write the bytestring to the memory
-    writeBS ep (BS.pack progBytes) memRef
-
-    return $ return $
-      Machine { pc     = pcRef
-              , gprs   = gprsRef
-              , memory = memRef
-              , nzp    = nzpRef
-              , halted = haltedRef
-              }
-  _ -> return $ Left IllFormedException
-
-data SimException = IllFormedException
-  deriving Show
 
 mkTest :: FilePath -> T.TestTree
 mkTest fp = T.testCase fp $ do
