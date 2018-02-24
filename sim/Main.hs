@@ -43,9 +43,16 @@ main = do
       case eMachine of
         Left IllFormedException -> do
           error "ill-formed binary"
-        Right (pc', gprs', _memory', _nzp', _halted') -> do
+        Right (pc', gprs', _memory', (n', z', p'), halted') -> do
           putStrLn $ "Final PC: " ++ prettyHex pc'
           putStrLn $ "Final register state:"
           forM_ (assocs gprs') $ \(r, v) -> do
             putStrLn $ "  R[" ++ show r ++ "] = " ++ prettyHex v
+          putStrLn $ "Final condition codes:"
+          putStrLn $ "  N = " ++ show (fromEnum n')
+          putStrLn $ "  Z = " ++ show (fromEnum z')
+          putStrLn $ "  P = " ++ show (fromEnum p')
 
+          if halted'
+            then putStrLn $ "The machine is halted."
+            else putStrLn $ "The machine is not halted."
