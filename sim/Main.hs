@@ -30,10 +30,12 @@ main = do
     exitWith $ ExitFailure 1
 
   case args of
-    [fileName] -> do
-      progBytes <- B.readFile fileName
+    (progFile:dataFiles) -> do
+
+      progBytes <- B.readFile progFile
+      dataBytes <- sequence $ B.readFile <$> dataFiles
       let eMachine = runST $ do
-            em <- bsInitMachine progBytes
+            em <- bsInitMachine progBytes dataBytes
             case em of
               Left e -> return $ Left e
               Right m -> do

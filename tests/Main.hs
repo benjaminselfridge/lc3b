@@ -61,7 +61,7 @@ mkTest fp = T.testCase fp $ do
 
       -- Execute the program for 100 steps
       let eMachine = runST $ do
-            em <- bsInitMachine progBytes
+            em <- bsInitMachine progBytes []
             case em of
               Left e  -> return $ Left e
               Right m -> do

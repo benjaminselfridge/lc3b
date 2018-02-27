@@ -50,11 +50,10 @@ line switches or anything. Same goes for lc3b-sim -- essentially, you feed that
 program the assembled .out file, and it will simulate it, outputting the final
 state of the PC and register file upon completion. If you want to see the state
 of the memory, you are out of luck unless you are willing to hack on the
-sim/Main.hs code yourself. 
+sim/Main.hs code yourself. You can also give lc3b-sim multiple input files; it
+is assumed the first one is the program and the other ones are just data.
 
 ## Random notes (mainly for myself)
 
-- TODO: Enhance simulator to accept multiple object files. Use the first one as
-  the program (so the PC gets set to the entry point in that file). The rest of
-  the object files just get loaded into the memory as data files.
+- TODO: Create additional test programs to make use of the multiple object files 
 - TODO: Make a disassembler tool

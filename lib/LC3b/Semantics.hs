@@ -4,7 +4,7 @@
 -- | The semantics for the LC-3b state machine
 module LC3b.Semantics where
 
-import           Control.Monad (when)
+import           Control.Monad (when, forM_)
 import           Control.Monad.ST (ST)
 import           Control.Monad.Trans (lift)
 import qualified Control.Monad.Trans.Reader as R
@@ -61,8 +61,8 @@ initMachine = do
             , halted = haltedRef
             }
 
-bsInitMachine :: BS.ByteString -> ST s (Either SimException (Machine s))
-bsInitMachine bs = case BS.unpack bs of
+bsInitMachine :: BS.ByteString -> [BS.ByteString] -> ST s (Either SimException (Machine s))
+bsInitMachine fullProgBytes otherData = case BS.unpack fullProgBytes of
   (epHgh8 : epLow8 : progBytes) -> do
 
     -- Initialize everything to 0
@@ -76,8 +76,15 @@ bsInitMachine bs = case BS.unpack bs of
     let ep = (fromIntegral epHgh8 `B.shiftL` 8) B..|. fromIntegral epLow8
     ST.writeSTRef pcRef ep
 
-    -- write the bytestring to the memory
+    -- write the program to the memory
     writeBS ep (BS.pack progBytes) memRef
+
+    -- write the other data to the memory
+    forM_ otherData $ \ bytes -> case BS.unpack bytes of
+      (addrHgh8 : addrLow8 : otherBytes) -> do
+        let addr = (fromIntegral addrHgh8 `B.shiftL` 8) B..|. fromIntegral addrLow8
+        writeBS addr (BS.pack otherBytes) memRef
+      _ -> return () -- FIXME: throw error here?
 
     return $ return $
       Machine { pc     = pcRef
