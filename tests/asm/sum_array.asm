@@ -21,6 +21,7 @@ START:  LEA     R1      ARR
         ;; the condition codes based on this load at the top of the loop.
         LEA     R2      SIZE
         LDW     R2      R2      0x0
+        LDW     R2      R2      0x0
 
         ;; Main loop. We assume at the top of the loop that R1 contains the next
         ;; address to be read, that R2 contains the number of array elements
