@@ -55,7 +55,8 @@ is assumed the first one is the program and the other ones are just data.
 
 ## Random notes (mainly for myself)
 
-- TODO: Create additional test programs to make use of the multiple object files 
+Might be fun to write a C compiler that targets LC-3b assembly.
+
 - TODO: Improve test suite; add more complex tests that require several object
   files.
 - TODO: Make a disassembler tool

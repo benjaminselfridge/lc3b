@@ -41,20 +41,11 @@ import           Text.Read (readMaybe)
 
 import LC3b.Utils
 
--- FIXME: Some of the errors could be considered warnings instead, but it's probably
--- more trouble than it's worth. I was thinking, if an operand is the wrong width or
--- sign, we could just warn the user rather than fail. But failing is probably a fine
--- thing to do since if you're writing an operand that is outside the expected range,
--- you're probably doing something wrong.
-
 -- FIXME: Create a separate sign error. Right now if an operand is the wrong sign, we
 -- just throw an OperandWidthError, but we need to add an OperandSizeError too.
 
 -- FIXME: When we throw operand width errors, we also want to report to the user
 -- whether it's supposed an unsigned or signed operand.
-
--- FIXME: Something slightly buggy going on with line number count. Seems to be off
--- by one.
 
 ----------------------------------------
 -- Types
